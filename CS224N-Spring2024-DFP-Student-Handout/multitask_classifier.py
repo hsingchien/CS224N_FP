@@ -73,7 +73,9 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        raise NotImplementedError
+        self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
+        self.predict_paraphrase_af = nn.Linear(BERT_HIDDEN_SIZE*2, 2)
+        self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
 
 
     def forward(self, input_ids, attention_mask):
@@ -82,8 +84,9 @@ class MultitaskBERT(nn.Module):
         # Here, you can start by just returning the embeddings straight from BERT.
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
-        ### TODO
-        raise NotImplementedError
+        
+        state = self.bert.forward(input_ids, attention_mask)
+        return state['pooler_output']
 
 
     def predict_sentiment(self, input_ids, attention_mask):
@@ -92,9 +95,9 @@ class MultitaskBERT(nn.Module):
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         '''
-        ### TODO
-        raise NotImplementedError
-
+        hidden = self.forward(input_ids, attention_mask)
+        logits = self.sentiment_af(hidden)
+        return logits
 
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
@@ -103,9 +106,11 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
-        ### TODO
-        raise NotImplementedError
-
+        hidden1= self.predict_paraphrase_af(input_ids_1, attention_mask_1)
+        hidden2 = self.predict_paraphrase_af(input_ids_2, attention_mask_2)
+        hidden = torch.cat((hidden1, hidden2), dim=-1)
+        logits = self.predict_paraphrase_af(hidden)
+        return logits
 
     def predict_similarity(self,
                            input_ids_1, attention_mask_1,
@@ -113,9 +118,11 @@ class MultitaskBERT(nn.Module):
         '''Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
         Note that your output should be unnormalized (a logit).
         '''
-        ### TODO
-        raise NotImplementedError
-
+        hidden1= self.predict_paraphrase_af(input_ids_1, attention_mask_1)
+        hidden2 = self.predict_paraphrase_af(input_ids_2, attention_mask_2)
+        hidden = torch.cat((hidden1, hidden2), dim=-1)
+        logit = self.predict_similarity_af(hidden)
+        return logit
 
 
 
