@@ -76,6 +76,7 @@ class MultitaskBERT(nn.Module):
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.predict_paraphrase_af = nn.Linear(BERT_HIDDEN_SIZE*2, 2)
         self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE*2, 1)
+        self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
 
 
     def forward(self, input_ids, attention_mask):
@@ -95,7 +96,9 @@ class MultitaskBERT(nn.Module):
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         '''
+
         hidden = self.forward(input_ids, attention_mask)
+        hidden = self.dropout_layer(hidden)
         logits = self.sentiment_af(hidden)
         return logits
 
@@ -106,9 +109,10 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
-        hidden1= self.predict_paraphrase_af(input_ids_1, attention_mask_1)
-        hidden2 = self.predict_paraphrase_af(input_ids_2, attention_mask_2)
+        hidden1= self.forward(input_ids_1, attention_mask_1)
+        hidden2 = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
+        hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
         return logits
 
@@ -118,9 +122,10 @@ class MultitaskBERT(nn.Module):
         '''Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
         Note that your output should be unnormalized (a logit).
         '''
-        hidden1= self.predict_paraphrase_af(input_ids_1, attention_mask_1)
-        hidden2 = self.predict_paraphrase_af(input_ids_2, attention_mask_2)
+        hidden1= self.forward(input_ids_1, attention_mask_1)
+        hidden2 = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
+        hidden = self.dropout_layer(hidden)
         logit = self.predict_similarity_af(hidden)
         return logit
 
