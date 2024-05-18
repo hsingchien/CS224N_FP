@@ -24,6 +24,8 @@ from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
 
+from pcgrad import PCGrad
+
 from datasets import (
     SentenceClassificationDataset,
     SentenceClassificationTestDataset,
@@ -228,7 +230,13 @@ def train_multitask(args):
     model = model.to(device)
 
     lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
+    if (args.pcgrad):
+        print("-- using pcgrad --")
+        optimizer = PCGrad(AdamW(model.parameters(), lr=lr))
+    else:
+        print("-- using default optimizer --")
+        optimizer = AdamW(model.parameters(), lr=lr)
+    
     best_dev_acc = 0
 
     # Run for the specified number of epochs.
@@ -334,8 +342,13 @@ def train_multitask(args):
                 + para_loss * loss_ratio[1]
                 + sts_loss * loss_ratio[2]
             ) / np.sum(loss_ratio)
-            optimizer.zero_grad()
-            loss.backward()
+
+            if (args.pcgrad):
+                losses = [sst_loss, para_loss, sts_loss]
+                optimizer.pc_backward(losses)
+            else:
+                optimizer.zero_grad()
+                loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
@@ -516,6 +529,7 @@ def get_args():
     parser.add_argument("--sts_train", type=str, default="data/sts-train.csv")
     parser.add_argument("--sts_dev", type=str, default="data/sts-dev.csv")
     parser.add_argument("--sts_test", type=str, default="data/sts-test-student.csv")
+    parser.add_argument("--pcgrad", type=bool, default=False)
 
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
