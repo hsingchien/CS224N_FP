@@ -209,15 +209,9 @@ def train_multitask(args):
         collate_fn=sts_dev_data.collate_fn,
     )
 
-    loss_ratio = args.loss_ratio
-
-    max_data_length = np.max(
-        (
-            len(sts_train_dataloader),
-            len(sst_train_dataloader),
-            len(para_train_dataloader),
-        )
-    )
+    loss_ratio = np.array(args.loss_ratio)
+    data_lengths = np.array([len(sts_train_dataloader), len(sst_train_dataloader),len(para_train_dataloader)])
+    max_data_length = np.max(data_lengths[np.nonzero(loss_ratio>0)])
 
     # Init model.
     config = {
@@ -251,81 +245,89 @@ def train_multitask(args):
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             ## calculate loss of sst
-            try:
-                sst_batch = next(sst_iterator)
-            except StopIteration:
-                sst_iterator = iter(sst_train_dataloader)
-                sst_batch = next(sst_iterator)
+            if loss_ratio[0]>0:
+                try:
+                    sst_batch = next(sst_iterator)
+                except StopIteration:
+                    sst_iterator = iter(sst_train_dataloader)
+                    sst_batch = next(sst_iterator)
 
-            sst_ids, sst_mask, sst_labels = (
-                sst_batch["token_ids"],
-                sst_batch["attention_mask"],
-                sst_batch["labels"],
-            )
-            sst_ids = sst_ids.to(device)
-            sst_mask = sst_mask.to(device)
-            sst_labels = sst_labels.to(device)
-            sst_logits = model.predict_sentiment(sst_ids, sst_mask)
-            sst_loss = (
-                F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
-                / args.batch_size
-            )
-
+                sst_ids, sst_mask, sst_labels = (
+                    sst_batch["token_ids"],
+                    sst_batch["attention_mask"],
+                    sst_batch["labels"],
+                )
+                sst_ids = sst_ids.to(device)
+                sst_mask = sst_mask.to(device)
+                sst_labels = sst_labels.to(device)
+                sst_logits = model.predict_sentiment(sst_ids, sst_mask)
+                sst_loss = (
+                    F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
+                    / args.batch_size
+                )
+            else:
+                sst_loss = 0
             ## calculate loss of para
-            try:
-                para_batch = next(para_iterator)
-            except StopIteration:
-                para_iterator = iter(para_train_dataloader)
-                para_batch = next(para_iterator)
+            if loss_ratio[1] > 0:
+                try:
+                    para_batch = next(para_iterator)
+                except StopIteration:
+                    para_iterator = iter(para_train_dataloader)
+                    para_batch = next(para_iterator)
 
-            para_ids1, para_mask1,para_ids2,para_mask2,para_labels = (
-                para_batch["token_ids_1"],
-                para_batch["attention_mask_1"],
-                para_batch["token_ids_2"],
-                para_batch["attention_mask_2"],
-                para_batch["labels"]
-            )
-            para_ids1 = para_ids1.to(device)
-            para_mask1 = para_mask1.to(device)
-            para_ids2 = para_ids2.to(device)
-            para_mask2 = para_mask2.to(device)
-            para_labels = para_labels.to(device)
-            para_logits = model.predict_paraphrase(
-                para_ids1, para_mask1, para_ids2, para_mask2
-            )
-            para_loss = (
-                F.cross_entropy(para_logits, para_labels.view(-1), reduction="sum")
-                / args.batch_size
-            )
+                para_ids1, para_mask1,para_ids2,para_mask2,para_labels = (
+                    para_batch["token_ids_1"],
+                    para_batch["attention_mask_1"],
+                    para_batch["token_ids_2"],
+                    para_batch["attention_mask_2"],
+                    para_batch["labels"]
+                )
+                para_ids1 = para_ids1.to(device)
+                para_mask1 = para_mask1.to(device)
+                para_ids2 = para_ids2.to(device)
+                para_mask2 = para_mask2.to(device)
+                para_labels = para_labels.to(device)
+                para_logits = model.predict_paraphrase(
+                    para_ids1, para_mask1, para_ids2, para_mask2
+                )
+                para_loss = (
+                    F.cross_entropy(para_logits, para_labels.view(-1), reduction="sum")
+                    / args.batch_size
+                )
+            else:
+                para_loss = 0
 
             ## calculate loss of sts
-            try:
-                sts_batch = next(sts_iterator)
-            except StopIteration:
-                sts_iterator = iter(sts_train_dataloader)
-                sts_batch = next(sts_iterator)
+            if loss_ratio[2] > 0:
+                try:
+                    sts_batch = next(sts_iterator)
+                except StopIteration:
+                    sts_iterator = iter(sts_train_dataloader)
+                    sts_batch = next(sts_iterator)
 
-            sts_ids1, sts_mask1, sts_ids2, sts_mask2, sts_labels = (
-                sts_batch["token_ids_1"],
-                sts_batch["attention_mask_1"],
-                sts_batch["token_ids_2"],
-                sts_batch["attention_mask_2"],
-                sts_batch["labels"]
-            )
-            sts_ids1 = sts_ids1.to(device)
-            sts_mask1 = sts_mask1.to(device)
-            sts_ids2 = sts_ids2.to(device)
-            sts_mask2 = sts_mask2.to(device)
-            sts_labels = sts_labels.float()
-            sts_labels = sts_labels.to(device)
-            
-            sts_score = model.predict_similarity(
-                sts_ids1, sts_mask1, sts_ids2, sts_mask2
-            )
-            sts_loss = (
-                F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="sum")
-                / args.batch_size
-            )
+                sts_ids1, sts_mask1, sts_ids2, sts_mask2, sts_labels = (
+                    sts_batch["token_ids_1"],
+                    sts_batch["attention_mask_1"],
+                    sts_batch["token_ids_2"],
+                    sts_batch["attention_mask_2"],
+                    sts_batch["labels"]
+                )
+                sts_ids1 = sts_ids1.to(device)
+                sts_mask1 = sts_mask1.to(device)
+                sts_ids2 = sts_ids2.to(device)
+                sts_mask2 = sts_mask2.to(device)
+                sts_labels = sts_labels.float()
+                sts_labels = sts_labels.to(device)
+                
+                sts_score = model.predict_similarity(
+                    sts_ids1, sts_mask1, sts_ids2, sts_mask2
+                )
+                sts_loss = (
+                    F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="sum")
+                    / args.batch_size
+                )
+            else:
+                sts_loss = 0
             ## calculate total loss and backpropagate
             loss = (
                 sst_loss * loss_ratio[0]
@@ -352,7 +354,7 @@ def train_multitask(args):
                 device,
             )
         )
-        sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_sst(
+        sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
 
@@ -469,6 +471,7 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Sentiment \n")
             for p, s in zip(dev_sst_sent_ids, dev_sst_y_pred):
                 f.write(f"{p} , {s} \n")
+            f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}")
 
         with open(args.sst_test_out, "w+") as f:
             f.write(f"id \t Predicted_Sentiment \n")
@@ -480,6 +483,7 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Is_Paraphrase \n")
             for p, s in zip(dev_para_sent_ids, dev_para_y_pred):
                 f.write(f"{p} , {s} \n")
+            f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}")
 
         with open(args.para_test_out, "w+") as f:
             f.write(f"id \t Predicted_Is_Paraphrase \n")
@@ -491,6 +495,7 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Similiary \n")
             for p, s in zip(dev_sts_sent_ids, dev_sts_y_pred):
                 f.write(f"{p} , {s} \n")
+            f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
 
         with open(args.sts_test_out, "w+") as f:
             f.write(f"id \t Predicted_Similiary \n")
