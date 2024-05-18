@@ -278,20 +278,18 @@ def train_multitask(args):
                 para_iterator = iter(para_train_dataloader)
                 para_batch = next(para_iterator)
 
-            para_ids1, para_mask1 = (
+            para_ids1, para_mask1,para_ids2,para_mask2,para_labels = (
                 para_batch["token_ids_1"],
                 para_batch["attention_mask_1"],
-            )
-            para_ids1.to(device)
-            para_mask1.to(device)
-            para_ids2, para_mask2 = (
                 para_batch["token_ids_2"],
                 para_batch["attention_mask_2"],
+                para_batch["labels"]
             )
-            para_ids2.to(device)
-            para_mask2.to(device)
-            para_labels = para_batch["labels"]
-            para_labels.to(device)
+            para_ids1 = para_ids1.to(device)
+            para_mask1 = para_mask1.to(device)
+            para_ids2 = para_ids2.to(device)
+            para_mask2 = para_mask2.to(device)
+            para_labels = para_labels.to(device)
             para_logits = model.predict_paraphrase(
                 para_ids1, para_mask1, para_ids2, para_mask2
             )
@@ -307,21 +305,20 @@ def train_multitask(args):
                 sts_iterator = iter(sts_train_dataloader)
                 sts_batch = next(sts_iterator)
 
-            sts_ids1, sts_mask1 = (
+            sts_ids1, sts_mask1, sts_ids2, sts_mask2, sts_labels = (
                 sts_batch["token_ids_1"],
                 sts_batch["attention_mask_1"],
-            )
-            sts_ids1.to(device)
-            sts_mask1.to(device)
-            sts_ids2, sts_mask2 = (
                 sts_batch["token_ids_2"],
                 sts_batch["attention_mask_2"],
+                sts_batch["labels"]
             )
-            sts_ids2.to(device)
-            sts_mask2.to(device)
-            sts_labels = sts_batch["labels"]
+            sts_ids1 = sts_ids1.to(device)
+            sts_mask1 = sts_mask1.to(device)
+            sts_ids2 = sts_ids2.to(device)
+            sts_mask2 = sts_mask2.to(device)
             sts_labels = sts_labels.float()
-            sts_labels.to(device)
+            sts_labels = sts_labels.to(device)
+            
             sts_score = model.predict_similarity(
                 sts_ids1, sts_mask1, sts_ids2, sts_mask2
             )
