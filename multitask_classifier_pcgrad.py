@@ -34,6 +34,8 @@ from datasets import (
 
 from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
 
+from grad_surgery import pcgrad
+
 
 TQDM_DISABLE = False
 
@@ -328,14 +330,9 @@ def train_multitask(args):
                 )
             else:
                 sts_loss = 0
-            ## calculate total loss and backpropagate
-            loss = (
-                sst_loss * loss_ratio[0]
-                + para_loss * loss_ratio[1]
-                + sts_loss * loss_ratio[2]
-            ) / np.sum(loss_ratio)
+            ## perform gradient surgery
             optimizer.zero_grad()
-            loss.backward()
+            pcgrad(model, [sst_loss, para_loss, sts_loss])
             optimizer.step()
 
             train_loss += loss.item()
