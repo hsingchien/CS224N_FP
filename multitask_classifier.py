@@ -25,6 +25,7 @@ from optimizer import AdamW
 from tqdm import tqdm
 
 from pcgrad import PCGrad
+from famo import FAMO
 
 from datasets import (
     SentenceClassificationDataset,
@@ -53,7 +54,7 @@ def seed_everything(seed=11711):
 
 BERT_HIDDEN_SIZE = 768
 N_SENTIMENT_CLASSES = 5
-
+N_TASKS = 3
 
 class MultitaskBERT(nn.Module):
     """
@@ -230,10 +231,14 @@ def train_multitask(args):
     model = model.to(device)
 
     lr = args.lr
-    if (args.pcgrad):
+    if (args.optimizer == 'pcgrad'):
         print("-- using pcgrad --")
         optimizer = PCGrad(AdamW(model.parameters(), lr=lr))
-    else:
+    elif (args.optimizer == 'famo'):
+        print("-- using famo --")
+        weight_opt = FAMO(n_tasks=N_TASKS, device=device)
+        optimizer = AdamW(model.parameters(), lr=lr)
+    elif(args.optimizer == 'default'):
         print("-- using default optimizer --")
         optimizer = AdamW(model.parameters(), lr=lr)
     
@@ -336,25 +341,42 @@ def train_multitask(args):
                 )
             else:
                 sts_loss = 0
-            ## calculate total loss and backpropagate
-            loss = (
-                sst_loss * loss_ratio[0]
-                + para_loss * loss_ratio[1]
-                + sts_loss * loss_ratio[2]
-            ) / np.sum(loss_ratio)
 
-            if (args.pcgrad):
+
+            if (args.optimizer == "pcgrad"):
                 losses = [sst_loss, para_loss, sts_loss]
                 optimizer.pc_backward(losses)
-            else:
+                optimizer.step()
+                avg_loss = (
+                    sst_loss 
+                    + para_loss 
+                    + sts_loss 
+                ) / 3
+                train_loss = avg_loss.item()
+                
+            elif (args.optimizer == 'famo'):
+                raise NotImplemented
+                # optimizer.zero_grad()
+                # # weight_opt.backward(loss)
+
+                # with torch.no_grad():
+                #     new_loss = (Y - model(X)).pow(2).mean(0) # (K,)
+                #     weight_opt.update(new_loss)
+                # print(f"[info] iter {it:3d} | avg loss {loss.mean().item():.4f}")
+                # optimizer.step()
+            elif(args.optimizer == 'default'):
+                ## calculate total loss and backpropagate
+                loss = (
+                    sst_loss * loss_ratio[0]
+                    + para_loss * loss_ratio[1]
+                    + sts_loss * loss_ratio[2]
+                ) / np.sum(loss_ratio)
                 optimizer.zero_grad()
                 loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-
-        train_loss = train_loss / (num_batches)
+                optimizer.step()
+                train_loss += loss.item()
+                num_batches += 1
+                train_loss = train_loss / (num_batches)
 
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
@@ -376,7 +398,8 @@ def train_multitask(args):
             save_model(model, optimizer, args, config, args.filepath)
 
         print(
-            f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst train acc :: {sst_train_acc :.3f}, sst dev acc :: {sst_dev_acc :.3f}\
+            f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
+              sst train acc :: {sst_train_acc :.3f}, sst dev acc :: {sst_dev_acc :.3f}\
               para train acc :: {para_train_acc:.3f}, para dev acc :: {para_dev_acc:.3f}, sts train corr :: {sts_train_corr :.3f},\
               sts dev corr :: {sts_dev_corr:.3f}"
         )
@@ -529,7 +552,7 @@ def get_args():
     parser.add_argument("--sts_train", type=str, default="data/sts-train.csv")
     parser.add_argument("--sts_dev", type=str, default="data/sts-dev.csv")
     parser.add_argument("--sts_test", type=str, default="data/sts-test-student.csv")
-    parser.add_argument("--pcgrad", type=bool, default=False)
+    parser.add_argument("--optimizer", type=str, default="default")
 
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
