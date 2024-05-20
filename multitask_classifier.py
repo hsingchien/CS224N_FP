@@ -371,7 +371,7 @@ def train_multitask(args):
                 train_loss = avg_loss.item()
                 
             elif (args.optimizer == 'famo'):
-                loss = torch.tensor([sst_loss, para_loss, sts_loss])
+                loss = torch.stack([sst_loss, para_loss, sts_loss],dim=0)
                 optimizer.zero_grad()
                 weight_opt.backward(loss)
                 optimizer.step()
@@ -396,7 +396,7 @@ def train_multitask(args):
                         F.mse_loss(new_sts_score.view(-1), sts_labels.view(-1), reduction="sum")
                         / args.batch_size
                     )
-                    new_loss = torch.tensor([new_sst_loss, new_para_loss, new_sts_loss])            
+                    new_loss = torch.tensor([new_sst_loss, new_para_loss, new_sts_loss], device=device)            
                     weight_opt.update(new_loss)
                 train_loss = loss.mean().item()
 
@@ -654,7 +654,6 @@ def get_args():
     )
     args = parser.parse_args()
     return args
-
 
 if __name__ == "__main__":
     args = get_args()
