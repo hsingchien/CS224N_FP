@@ -37,6 +37,7 @@ from datasets import (
 
 from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
 
+from grad_surgery import hmpcgrad
 
 TQDM_DISABLE = False
 
@@ -133,9 +134,19 @@ class MultitaskBERT(nn.Module):
 
 
 def save_model(model, optimizer, args, config, filepath):
-    save_info = {
+    if args.optimizer != "pcgrad":
+        save_info = {
         "model": model.state_dict(),
         "optim": optimizer.state_dict(),
+        "args": args,
+        "model_config": config,
+        "system_rng": random.getstate(),
+        "numpy_rng": np.random.get_state(),
+        "torch_rng": torch.random.get_rng_state(),
+    }
+    else:
+        save_info = {
+        "model": model.state_dict(),
         "args": args,
         "model_config": config,
         "system_rng": random.getstate(),
@@ -155,7 +166,7 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     """
-    device = torch.device("cuda") if args.use_gpu else torch.device("cpu")
+    device = torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels, para_train_data, sts_train_data = load_multitask_data(
         args.sst_train, args.para_train, args.sts_train, split="train"
@@ -215,6 +226,8 @@ def train_multitask(args):
     loss_ratio = np.array(args.loss_ratio)
     data_lengths = np.array([len(sts_train_dataloader), len(sst_train_dataloader),len(para_train_dataloader)])
     max_data_length = np.max(data_lengths[np.nonzero(loss_ratio>0)])
+    min_data_length = np.min(data_lengths[np.nonzero(loss_ratio>0)])
+    avg_data_length = int(np.mean(data_lengths[np.nonzero(loss_ratio>0)]))
 
     # Init model.
     config = {
@@ -241,6 +254,9 @@ def train_multitask(args):
     elif(args.optimizer == 'default'):
         print("-- using default optimizer --")
         optimizer = AdamW(model.parameters(), lr=lr)
+    elif(args.optimizer == 'hmpcgrad'):
+        print("-- using homemade pcgrad optimizer --")
+        optimizer = AdamW(model.parameters(), lr=lr)
     
     best_dev_acc = 0
 
@@ -254,7 +270,7 @@ def train_multitask(args):
         sts_iterator = iter(sts_train_dataloader)
         para_iterator = iter(para_train_dataloader)
         for _ in tqdm(
-            range(max_data_length), desc=f"train-{epoch}", disable=TQDM_DISABLE
+            range(avg_data_length), desc=f"train-{epoch}", disable=TQDM_DISABLE
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             ## calculate loss of sst
@@ -377,9 +393,20 @@ def train_multitask(args):
                 train_loss += loss.item()
                 num_batches += 1
                 train_loss = train_loss / (num_batches)
+            elif(args.optimizer=='hmpcgrad'):
+                optimizer.zero_grad()
+                hmpcgrad(model, [sst_loss, para_loss, sts_loss])
+                optimizer.step()
+                avg_loss = (
+                    sst_loss 
+                    + para_loss 
+                    + sts_loss 
+                ) / 3
+                train_loss = avg_loss.item()
 
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        
         sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
             model_eval_multitask(
                 sst_train_dataloader,
@@ -408,7 +435,7 @@ def train_multitask(args):
 def test_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
     with torch.no_grad():
-        device = torch.device("cuda") if args.use_gpu else torch.device("cpu")
+        device = torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
         saved = torch.load(args.filepath)
         config = saved["model_config"]
 
@@ -564,6 +591,8 @@ def get_args():
         default="last-linear-layer",
     )
     parser.add_argument("--use_gpu", action="store_true")
+
+    parser.add_argument("--gpuid", type=int, default=0)
 
     parser.add_argument(
         "--sst_dev_out", type=str, default="predictions/sst-dev-output.csv"
