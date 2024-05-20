@@ -371,15 +371,35 @@ def train_multitask(args):
                 train_loss = avg_loss.item()
                 
             elif (args.optimizer == 'famo'):
-                raise NotImplemented
-                # optimizer.zero_grad()
-                # # weight_opt.backward(loss)
+                loss = torch.tensor([sst_loss, para_loss, sts_loss])
+                optimizer.zero_grad()
+                weight_opt.backward(loss)
+                optimizer.step()
+                with torch.no_grad():
+                    # new_loss = torch.tensor([sst_loss, para_loss, sts_loss])
+                    new_sst_logits = model.predict_sentiment(sst_ids, sst_mask)
+                    new_sst_loss = (
+                        F.cross_entropy(new_sst_logits, sst_labels.view(-1), reduction="sum")
+                        / args.batch_size
+                    )
+                    new_para_logits = model.predict_paraphrase(
+                        para_ids1, para_mask1, para_ids2, para_mask2
+                    )
+                    new_para_loss = (
+                        F.cross_entropy(new_para_logits, para_labels.view(-1), reduction="sum")
+                        / args.batch_size
+                    )
+                    new_sts_score = model.predict_similarity(
+                        sts_ids1, sts_mask1, sts_ids2, sts_mask2
+                    )
+                    new_sts_loss = (
+                        F.mse_loss(new_sts_score.view(-1), sts_labels.view(-1), reduction="sum")
+                        / args.batch_size
+                    )
+                    new_loss = torch.tensor([new_sst_loss, new_para_loss, new_sts_loss])            
+                    weight_opt.update(new_loss)
+                train_loss = loss.mean().item()
 
-                # with torch.no_grad():
-                #     new_loss = (Y - model(X)).pow(2).mean(0) # (K,)
-                #     weight_opt.update(new_loss)
-                # print(f"[info] iter {it:3d} | avg loss {loss.mean().item():.4f}")
-                # optimizer.step()
             elif(args.optimizer == 'default'):
                 ## calculate total loss and backpropagate
                 loss = (
