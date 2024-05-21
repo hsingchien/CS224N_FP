@@ -178,16 +178,18 @@ def train_multitask(args):
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
+    print(args.batch_size)
+
     sst_train_dataloader = DataLoader(
         sst_train_data,
         shuffle=True,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[0],
         collate_fn=sst_train_data.collate_fn,
     )
     sst_dev_dataloader = DataLoader(
         sst_dev_data,
         shuffle=False,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[0],
         collate_fn=sst_dev_data.collate_fn,
     )
 
@@ -197,13 +199,13 @@ def train_multitask(args):
     para_train_dataloader = DataLoader(
         para_train_data,
         shuffle=True,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[1],
         collate_fn=para_train_data.collate_fn,
     )
     para_dev_dataloader = DataLoader(
         para_dev_data,
         shuffle=False,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[1],
         collate_fn=para_dev_data.collate_fn,
     )
 
@@ -213,13 +215,13 @@ def train_multitask(args):
     sts_train_dataloader = DataLoader(
         sts_train_data,
         shuffle=True,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[2],
         collate_fn=sts_train_data.collate_fn,
     )
     sts_dev_dataloader = DataLoader(
         sts_dev_data,
         shuffle=False,
-        batch_size=args.batch_size,
+        batch_size=args.batch_size[2],
         collate_fn=sts_dev_data.collate_fn,
     )
 
@@ -292,7 +294,7 @@ def train_multitask(args):
                 sst_logits = model.predict_sentiment(sst_ids, sst_mask)
                 sst_loss = (
                     F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
-                    / args.batch_size
+                    / args.batch_size[0]
                 )
             else:
                 sst_loss = 0
@@ -321,7 +323,7 @@ def train_multitask(args):
                 )
                 para_loss = (
                     F.cross_entropy(para_logits, para_labels.view(-1), reduction="sum")
-                    / args.batch_size
+                    / args.batch_size[1]
                 )
             else:
                 para_loss = 0
@@ -353,7 +355,7 @@ def train_multitask(args):
                 )
                 sts_loss = (
                     F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="sum")
-                    / args.batch_size
+                    / args.batch_size[2]
                 )
             else:
                 sts_loss = 0
@@ -380,21 +382,21 @@ def train_multitask(args):
                     new_sst_logits = model.predict_sentiment(sst_ids, sst_mask)
                     new_sst_loss = (
                         F.cross_entropy(new_sst_logits, sst_labels.view(-1), reduction="sum")
-                        / args.batch_size
+                        / args.batch_size[0]
                     )
                     new_para_logits = model.predict_paraphrase(
                         para_ids1, para_mask1, para_ids2, para_mask2
                     )
                     new_para_loss = (
                         F.cross_entropy(new_para_logits, para_labels.view(-1), reduction="sum")
-                        / args.batch_size
+                        / args.batch_size[1]
                     )
                     new_sts_score = model.predict_similarity(
                         sts_ids1, sts_mask1, sts_ids2, sts_mask2
                     )
                     new_sts_loss = (
                         F.mse_loss(new_sts_score.view(-1), sts_labels.view(-1), reduction="sum")
-                        / args.batch_size
+                        / args.batch_size[2]
                     )
                     new_loss = torch.tensor([new_sst_loss, new_para_loss, new_sts_loss], device=device)            
                     weight_opt.update(new_loss)
@@ -478,13 +480,13 @@ def test_multitask(args):
         sst_test_dataloader = DataLoader(
             sst_test_data,
             shuffle=True,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[0],
             collate_fn=sst_test_data.collate_fn,
         )
         sst_dev_dataloader = DataLoader(
             sst_dev_data,
             shuffle=False,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[0],
             collate_fn=sst_dev_data.collate_fn,
         )
 
@@ -494,13 +496,13 @@ def test_multitask(args):
         para_test_dataloader = DataLoader(
             para_test_data,
             shuffle=True,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[1],
             collate_fn=para_test_data.collate_fn,
         )
         para_dev_dataloader = DataLoader(
             para_dev_data,
             shuffle=False,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[1],
             collate_fn=para_dev_data.collate_fn,
         )
 
@@ -510,13 +512,13 @@ def test_multitask(args):
         sts_test_dataloader = DataLoader(
             sts_test_data,
             shuffle=True,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[2],
             collate_fn=sts_test_data.collate_fn,
         )
         sts_dev_dataloader = DataLoader(
             sts_dev_data,
             shuffle=False,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size[2],
             collate_fn=sts_dev_data.collate_fn,
         )
 
@@ -637,9 +639,10 @@ def get_args():
 
     parser.add_argument(
         "--batch_size",
-        help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
+        help="pass a single int or a list of 3 int for batch size of sst, para and sts. sst: 64, cfimdb: 8 can fit a 12GB GPU",
         type=int,
-        default=8,
+        nargs='+',
+        default=[8,8,8],
     )
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
@@ -660,6 +663,9 @@ if __name__ == "__main__":
     args.filepath = (
         f"{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
     )
+    if len(args.batch_size)!=3:
+        args.batch_size = args.batch_size + [args.batch_size[-1]] * (3-len(args.batch_size))
+
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
