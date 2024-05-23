@@ -226,10 +226,11 @@ def train_multitask(args):
     )
 
     loss_ratio = np.array(args.loss_ratio)
-    data_lengths = np.array([len(sts_train_dataloader), len(sst_train_dataloader),len(para_train_dataloader)])
+    data_lengths = np.array([len(sst_train_dataloader),len(para_train_dataloader),len(sts_train_dataloader)])
     max_data_length = np.max(data_lengths[np.nonzero(loss_ratio>0)])
     min_data_length = np.min(data_lengths[np.nonzero(loss_ratio>0)])
     avg_data_length = int(np.mean(data_lengths[np.nonzero(loss_ratio>0)]))
+    print(data_lengths,avg_data_length)
 
     # Init model.
     config = {
@@ -441,6 +442,8 @@ def train_multitask(args):
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
+        with open('training_record_dev_acc.csv', "a") as f:
+            f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
         if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
             best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
