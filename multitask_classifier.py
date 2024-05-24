@@ -433,15 +433,16 @@ def train_multitask(args):
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
         
-        sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
-            model_eval_multitask(
-                sst_train_dataloader,
-                para_train_dataloader,
-                sts_train_dataloader,
-                model,
-                device,
-            )
-        )
+        # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+        #     model_eval_multitask(
+        #         sst_train_dataloader,
+        #         para_train_dataloader,
+        #         sts_train_dataloader,
+        #         model,
+        #         device,
+        #     )
+        # )
+        sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
@@ -454,8 +455,11 @@ def train_multitask(args):
 
         print(
             f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
-              sst train acc :: {sst_train_acc :.3f}, sst dev acc :: {sst_dev_acc :.3f}\
-              para train acc :: {para_train_acc:.3f}, para dev acc :: {para_dev_acc:.3f}, sts train corr :: {sts_train_corr :.3f},\
+              sst train acc :: {sst_train_acc :.3f}, \
+              sst dev acc :: {sst_dev_acc :.3f}\
+              para train acc :: {para_train_acc:.3f}, \
+              para dev acc :: {para_dev_acc:.3f}, \
+              sts train corr :: {sts_train_corr :.3f},\
               sts dev corr :: {sts_dev_corr:.3f}"
         )
 
