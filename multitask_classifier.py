@@ -81,6 +81,7 @@ class MultitaskBERT(nn.Module):
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.predict_paraphrase_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 2)
         self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
+        self.batch_norm_sts = nn.BatchNorm1d(BERT_HIDDEN_SIZE*2)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, attention_mask):
@@ -128,8 +129,10 @@ class MultitaskBERT(nn.Module):
         hidden1 = self.forward(input_ids_1, attention_mask_1)
         hidden2 = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
+        hidden = self.batch_norm_sts(hidden)
         hidden = self.dropout_layer(hidden)
         similarity_score_hat = self.predict_similarity_af(hidden)
+        similarity_score_hat = F.tanh(similarity_score_hat) * 2.5 # rescale tanh output (-1,1) the output to [0,5]
         return similarity_score_hat
 
 
