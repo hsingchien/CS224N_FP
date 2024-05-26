@@ -432,6 +432,8 @@ def train_multitask(args):
 
         sts_dev_cor,*_ = model_val_sts(sts_dev_dataloader,model,device)
         print(f"sts dev correlation {sts_dev_cor}")
+        if sts_dev_cor > best_dev_acc:
+            save_model(model, optimizer, args, config, args.filepath)
 
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
