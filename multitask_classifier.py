@@ -35,7 +35,7 @@ from datasets import (
     load_multitask_data,
 )
 
-from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
+from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask, model_val_sts
 
 from grad_surgery import hmpcgrad
 
@@ -81,8 +81,8 @@ class MultitaskBERT(nn.Module):
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.predict_paraphrase_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 2)
         self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
-        self.batch_norm_sts = nn.BatchNorm1d(BERT_HIDDEN_SIZE*2)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
+        self.cos = torch.nn.CosineSimilarity(dim=1)
 
     def forward(self, input_ids, attention_mask):
         "Takes a batch of sentences and produces embeddings for them."
@@ -128,12 +128,12 @@ class MultitaskBERT(nn.Module):
         """
         hidden1 = self.forward(input_ids_1, attention_mask_1)
         hidden2 = self.forward(input_ids_2, attention_mask_2)
-        hidden = torch.cat((hidden1, hidden2), dim=-1)
-        hidden = self.batch_norm_sts(hidden)
-        hidden = self.dropout_layer(hidden)
-        similarity_score_hat = self.predict_similarity_af(hidden)
-        similarity_score_hat = F.tanh(similarity_score_hat) * 2.5 # rescale tanh output (-1,1) the output to [0,5]
-        return similarity_score_hat
+        # calculate cosine similarity
+        sim_score = self.cos(hidden1, hidden2)
+        # map sim_score [-1,1] to [0,5]
+        sim_score = (sim_score+1)*2.5
+        return sim_score
+
 
 
 def save_model(model, optimizer, args, config, filepath):
@@ -430,6 +430,9 @@ def train_multitask(args):
                 ) / 3
                 train_loss = avg_loss.item()
 
+        sts_dev_cor,*_ = model_val_sts(sts_dev_dataloader,model,device)
+        print(f"sts dev correlation {sts_dev_cor}")
+
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
         
@@ -442,26 +445,26 @@ def train_multitask(args):
         #         device,
         #     )
         # )
-        sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
-        sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
-            sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
-        )
-        with open('training_record_dev_acc.csv', "a") as f:
-            f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
+        # sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
+        # sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
+        #     sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
+        # )
+        # with open('training_record_dev_acc.csv', "a") as f:
+        #     f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
-        if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
-            best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
-            save_model(model, optimizer, args, config, args.filepath)
+        # if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
+        #     best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
+        #     save_model(model, optimizer, args, config, args.filepath)
 
-        print(
-            f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
-              sst train acc :: {sst_train_acc :.3f}, \
-              sst dev acc :: {sst_dev_acc :.3f}\
-              para train acc :: {para_train_acc:.3f}, \
-              para dev acc :: {para_dev_acc:.3f}, \
-              sts train corr :: {sts_train_corr :.3f},\
-              sts dev corr :: {sts_dev_corr:.3f}"
-        )
+        # print(
+        #     f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
+        #       sst train acc :: {sst_train_acc :.3f}, \
+        #       sst dev acc :: {sst_dev_acc :.3f}\
+        #       para train acc :: {para_train_acc:.3f}, \
+        #       para dev acc :: {para_dev_acc:.3f}, \
+        #       sts train corr :: {sts_train_corr :.3f},\
+        #       sts dev corr :: {sts_dev_corr:.3f}"
+        # )
 
 
 def test_multitask(args):

@@ -45,6 +45,39 @@ def model_eval_sst(dataloader, model, device):
 
     return acc, f1, y_pred, y_true, sents, sent_ids
 
+def model_val_sts(dataloader, model, device):
+    model.eval()
+    with torch.no_grad():
+        sts_y_true = []
+        sts_y_pred = []
+        sts_sent_ids = []
+        for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=TQDM_DISABLE)):
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
+                          batch['token_ids_2'], batch['attention_mask_2'],
+                          batch['labels'], batch['sent_ids'])
+
+            b_ids1 = b_ids1.to(device)
+            b_mask1 = b_mask1.to(device)
+            b_ids2 = b_ids2.to(device)
+            b_mask2 = b_mask2.to(device)
+
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+            y_hat = logits.flatten().cpu().numpy()
+            b_labels = b_labels.flatten().cpu().numpy()
+
+            sts_y_pred.extend(y_hat)
+            sts_y_true.extend(b_labels)
+            sts_sent_ids.extend(b_sent_ids)
+        pearson_mat = np.corrcoef(sts_y_pred,sts_y_true)
+        sts_corr = pearson_mat[1][0]
+        print(f'Semantic Textual Similarity correlation: {sts_corr:.3f}')
+
+        return (sts_corr, sts_y_pred, sts_sent_ids)
+    
+
+
 
 # Evaluate multitask model on dev sets.
 def model_eval_multitask(sentiment_dataloader,
