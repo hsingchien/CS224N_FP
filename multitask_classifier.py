@@ -35,7 +35,13 @@ from datasets import (
     load_multitask_data,
 )
 
-from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask, model_val_sts
+from evaluation import (
+    model_eval_sst,
+    model_eval_multitask,
+    model_eval_test_multitask,
+    model_val_sts,
+    model_val_para,
+)
 
 from grad_surgery import hmpcgrad
 
@@ -56,6 +62,7 @@ def seed_everything(seed=11711):
 BERT_HIDDEN_SIZE = 768
 N_SENTIMENT_CLASSES = 5
 N_TASKS = 3
+
 
 class MultitaskBERT(nn.Module):
     """
@@ -92,8 +99,9 @@ class MultitaskBERT(nn.Module):
         # (e.g., by adding other layers).
 
         state = self.bert.forward(input_ids, attention_mask)
-        sequence_output = state['last_hidden_state']
-        avg_hidden = torch.mean(sequence_output[:,1:], dim=1)
+        sequence_output = state["last_hidden_state"]
+        avg_hidden = torch.mean(sequence_output[:, 1:], dim=1)
+        # avg_hidden = torch.cat((avg_hidden, state["pooler_output"]), dim=-1)
         return state["pooler_output"], avg_hidden
 
     def predict_sentiment(self, input_ids, attention_mask):
@@ -115,8 +123,8 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        hidden1, _ = self.forward(input_ids_1, attention_mask_1)
-        hidden2, _ = self.forward(input_ids_2, attention_mask_2)
+        _, hidden1 = self.forward(input_ids_1, attention_mask_1)
+        _, hidden2 = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
@@ -132,32 +140,29 @@ class MultitaskBERT(nn.Module):
         _, avg_hidden2 = self.forward(input_ids_2, attention_mask_2)
         # calculate cosine similarity
         sim_score = self.cos(avg_hidden1, avg_hidden2)
-        # map sim_score [-1,1] to [0,5]
-        sim_score = (sim_score+1)*2.5
         return sim_score
-
 
 
 def save_model(model, optimizer, args, config, filepath):
     if args.optimizer != "pcgrad":
         save_info = {
-        "model": model.state_dict(),
-        "optim": optimizer.state_dict(),
-        "args": args,
-        "model_config": config,
-        "system_rng": random.getstate(),
-        "numpy_rng": np.random.get_state(),
-        "torch_rng": torch.random.get_rng_state(),
-    }
+            "model": model.state_dict(),
+            "optim": optimizer.state_dict(),
+            "args": args,
+            "model_config": config,
+            "system_rng": random.getstate(),
+            "numpy_rng": np.random.get_state(),
+            "torch_rng": torch.random.get_rng_state(),
+        }
     else:
         save_info = {
-        "model": model.state_dict(),
-        "args": args,
-        "model_config": config,
-        "system_rng": random.getstate(),
-        "numpy_rng": np.random.get_state(),
-        "torch_rng": torch.random.get_rng_state(),
-    }
+            "model": model.state_dict(),
+            "args": args,
+            "model_config": config,
+            "system_rng": random.getstate(),
+            "numpy_rng": np.random.get_state(),
+            "torch_rng": torch.random.get_rng_state(),
+        }
 
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
@@ -231,11 +236,17 @@ def train_multitask(args):
     )
 
     loss_ratio = np.array(args.loss_ratio)
-    data_lengths = np.array([len(sst_train_dataloader),len(para_train_dataloader),len(sts_train_dataloader)])
-    max_data_length = np.max(data_lengths[np.nonzero(loss_ratio>0)])
-    min_data_length = np.min(data_lengths[np.nonzero(loss_ratio>0)])
-    avg_data_length = int(np.mean(data_lengths[np.nonzero(loss_ratio>0)]))
-    print(data_lengths,avg_data_length)
+    data_lengths = np.array(
+        [
+            len(sst_train_dataloader),
+            len(para_train_dataloader),
+            len(sts_train_dataloader),
+        ]
+    )
+    max_data_length = np.max(data_lengths[np.nonzero(loss_ratio > 0)])
+    min_data_length = np.min(data_lengths[np.nonzero(loss_ratio > 0)])
+    avg_data_length = int(np.mean(data_lengths[np.nonzero(loss_ratio > 0)]))
+    print(data_lengths, avg_data_length)
 
     # Init model.
     config = {
@@ -252,20 +263,20 @@ def train_multitask(args):
     model = model.to(device)
 
     lr = args.lr
-    if (args.optimizer == 'pcgrad'):
+    if args.optimizer == "pcgrad":
         print("-- using pcgrad --")
         optimizer = PCGrad(AdamW(model.parameters(), lr=lr))
-    elif (args.optimizer == 'famo'):
+    elif args.optimizer == "famo":
         print("-- using famo --")
         weight_opt = FAMO(n_tasks=N_TASKS, device=device)
         optimizer = AdamW(model.parameters(), lr=lr)
-    elif(args.optimizer == 'default'):
+    elif args.optimizer == "default":
         print("-- using default optimizer --")
         optimizer = AdamW(model.parameters(), lr=lr)
-    elif(args.optimizer == 'hmpcgrad'):
+    elif args.optimizer == "hmpcgrad":
         print("-- using homemade pcgrad optimizer --")
         optimizer = AdamW(model.parameters(), lr=lr)
-    
+
     best_dev_acc = 0
 
     # Run for the specified number of epochs.
@@ -282,7 +293,7 @@ def train_multitask(args):
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             ## calculate loss of sst
-            if loss_ratio[0]>0:
+            if loss_ratio[0] > 0:
                 try:
                     sst_batch = next(sst_iterator)
                 except StopIteration:
@@ -312,12 +323,12 @@ def train_multitask(args):
                     para_iterator = iter(para_train_dataloader)
                     para_batch = next(para_iterator)
 
-                para_ids1, para_mask1,para_ids2,para_mask2,para_labels = (
+                para_ids1, para_mask1, para_ids2, para_mask2, para_labels = (
                     para_batch["token_ids_1"],
                     para_batch["attention_mask_1"],
                     para_batch["token_ids_2"],
                     para_batch["attention_mask_2"],
-                    para_batch["labels"]
+                    para_batch["labels"],
                 )
                 para_ids1 = para_ids1.to(device)
                 para_mask1 = para_mask1.to(device)
@@ -347,15 +358,15 @@ def train_multitask(args):
                     sts_batch["attention_mask_1"],
                     sts_batch["token_ids_2"],
                     sts_batch["attention_mask_2"],
-                    sts_batch["labels"]
+                    sts_batch["labels"],
                 )
                 sts_ids1 = sts_ids1.to(device)
                 sts_mask1 = sts_mask1.to(device)
                 sts_ids2 = sts_ids2.to(device)
                 sts_mask2 = sts_mask2.to(device)
-                sts_labels = sts_labels.float()
+                sts_labels = sts_labels.float() / 5
                 sts_labels = sts_labels.to(device)
-                
+
                 sts_score = model.predict_similarity(
                     sts_ids1, sts_mask1, sts_ids2, sts_mask2
                 )
@@ -366,20 +377,15 @@ def train_multitask(args):
             else:
                 sts_loss = 0
 
-
-            if (args.optimizer == "pcgrad"):
+            if args.optimizer == "pcgrad":
                 losses = [sst_loss, para_loss, sts_loss]
                 optimizer.pc_backward(losses)
                 optimizer.step()
-                avg_loss = (
-                    sst_loss 
-                    + para_loss 
-                    + sts_loss 
-                ) / 3
+                avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
-                
-            elif (args.optimizer == 'famo'):
-                loss = torch.stack([sst_loss, para_loss, sts_loss],dim=0)
+
+            elif args.optimizer == "famo":
+                loss = torch.stack([sst_loss, para_loss, sts_loss], dim=0)
                 optimizer.zero_grad()
                 weight_opt.backward(loss)
                 optimizer.step()
@@ -387,28 +393,36 @@ def train_multitask(args):
                     # new_loss = torch.tensor([sst_loss, para_loss, sts_loss])
                     new_sst_logits = model.predict_sentiment(sst_ids, sst_mask)
                     new_sst_loss = (
-                        F.cross_entropy(new_sst_logits, sst_labels.view(-1), reduction="sum")
+                        F.cross_entropy(
+                            new_sst_logits, sst_labels.view(-1), reduction="sum"
+                        )
                         / args.batch_size[0]
                     )
                     new_para_logits = model.predict_paraphrase(
                         para_ids1, para_mask1, para_ids2, para_mask2
                     )
                     new_para_loss = (
-                        F.cross_entropy(new_para_logits, para_labels.view(-1), reduction="sum")
+                        F.cross_entropy(
+                            new_para_logits, para_labels.view(-1), reduction="sum"
+                        )
                         / args.batch_size[1]
                     )
                     new_sts_score = model.predict_similarity(
                         sts_ids1, sts_mask1, sts_ids2, sts_mask2
                     )
                     new_sts_loss = (
-                        F.mse_loss(new_sts_score.view(-1), sts_labels.view(-1), reduction="sum")
+                        F.mse_loss(
+                            new_sts_score.view(-1), sts_labels.view(-1), reduction="sum"
+                        )
                         / args.batch_size[2]
                     )
-                    new_loss = torch.tensor([new_sst_loss, new_para_loss, new_sts_loss], device=device)            
+                    new_loss = torch.tensor(
+                        [new_sst_loss, new_para_loss, new_sts_loss], device=device
+                    )
                     weight_opt.update(new_loss)
                 train_loss = loss.mean().item()
 
-            elif(args.optimizer == 'default'):
+            elif args.optimizer == "default":
                 ## calculate total loss and backpropagate
                 loss = (
                     sst_loss * loss_ratio[0]
@@ -421,60 +435,68 @@ def train_multitask(args):
                 train_loss += loss.item()
                 num_batches += 1
                 train_loss = train_loss / (num_batches)
-            elif(args.optimizer=='hmpcgrad'):
+            elif args.optimizer == "hmpcgrad":
                 optimizer.zero_grad()
                 hmpcgrad(model, [sst_loss, para_loss, sts_loss])
                 optimizer.step()
-                avg_loss = (
-                    sst_loss 
-                    + para_loss 
-                    + sts_loss 
-                ) / 3
+                avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
 
-        sts_dev_cor,*_ = model_val_sts(sts_dev_dataloader,model,device)
-        print(f"sts dev correlation {sts_dev_cor}")
-        if sts_dev_cor > best_dev_acc:
-            save_model(model, optimizer, args, config, args.filepath)
-
-        # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
-        
-        # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
-        #     model_eval_multitask(
-        #         sst_train_dataloader,
-        #         para_train_dataloader,
-        #         sts_train_dataloader,
-        #         model,
-        #         device,
-        #     )
-        # )
-        # sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
-        # sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
-        #     sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
-        # )
-        # with open('training_record_dev_acc.csv', "a") as f:
-        #     f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
-
-        # if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
-        #     best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
+        ##### Evaluate sts
+        sts_dev_cor, *_ = model_val_sts(sts_dev_dataloader, model, device)
+        # if sts_dev_cor > best_dev_acc:
         #     save_model(model, optimizer, args, config, args.filepath)
 
-        # print(
-        #     f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
-        #       sst train acc :: {sst_train_acc :.3f}, \
-        #       sst dev acc :: {sst_dev_acc :.3f}\
-        #       para train acc :: {para_train_acc:.3f}, \
-        #       para dev acc :: {para_dev_acc:.3f}, \
-        #       sts train corr :: {sts_train_corr :.3f},\
-        #       sts dev corr :: {sts_dev_corr:.3f}"
-        # )
+        ##### Evaluate sst
+        # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+
+        ##### Evaluate para
+        para_dev_acc, *_ = model_val_para(sts_dev_dataloader, model, device)
+        # if para_dev_acc > best_dev_acc:
+        #     save_model(model, optimizer, args, config, args.filepath)
+        with open("training_record_para_sts.csv", "a") as f:
+            f.write(f"{para_dev_acc},{sts_dev_cor}\n")
+
+
+##### Evaluate multitask
+# sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+#     model_eval_multitask(
+#         sst_train_dataloader,
+#         para_train_dataloader,
+#         sts_train_dataloader,
+#         model,
+#         device,
+#     )
+# )
+# sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
+# sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
+#     sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
+# )
+# with open('training_record_dev_acc.csv', "a") as f:
+#     f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
+
+# if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
+#     best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
+#     save_model(model, optimizer, args, config, args.filepath)
+
+# print(
+#     f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
+#       sst train acc :: {sst_train_acc :.3f}, \
+#       sst dev acc :: {sst_dev_acc :.3f}\
+#       para train acc :: {para_train_acc:.3f}, \
+#       para dev acc :: {para_dev_acc:.3f}, \
+#       sts train corr :: {sts_train_corr :.3f},\
+#       sts dev corr :: {sts_dev_corr:.3f}"
+# )
 
 
 def test_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
     with torch.no_grad():
-        device = torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
+        device = (
+            torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
+        )
         saved = torch.load(args.filepath)
         config = saved["model_config"]
 
@@ -658,8 +680,8 @@ def get_args():
         "--batch_size",
         help="pass a single int or a list of 3 int for batch size of sst, para and sts. sst: 64, cfimdb: 8 can fit a 12GB GPU",
         type=int,
-        nargs='+',
-        default=[8,8,8],
+        nargs="+",
+        default=[8, 8, 8],
     )
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
@@ -675,13 +697,16 @@ def get_args():
     args = parser.parse_args()
     return args
 
+
 if __name__ == "__main__":
     args = get_args()
     args.filepath = (
         f"{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
     )
-    if len(args.batch_size)!=3:
-        args.batch_size = args.batch_size + [args.batch_size[-1]] * (3-len(args.batch_size))
+    if len(args.batch_size) != 3:
+        args.batch_size = args.batch_size + [args.batch_size[-1]] * (
+            3 - len(args.batch_size)
+        )
 
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
