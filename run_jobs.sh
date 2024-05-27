@@ -2,7 +2,7 @@
 
 # Function to check if a GPU is idle
 is_gpu_idle() {
-    local gpu_id=$1
+    local gpu_id=$0
     local utilization=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits -i $gpu_id)
     if [ "$utilization" -lt 10 ]; then
         echo 1
@@ -21,9 +21,11 @@ run_job_on_gpu() {
 
 # List of jobs to run
 job_queue=(
-    "python train_model1.py"
-    "python train_model2.py"
-    "python train_model3.py"
+    "python multitask_classifier.py --use_gpu --gpuid $gpu_id --loss_ratio 0.1 1 0.1 --batch_size 4 28 4 --optimizer hmpcgrad --prediction_out predictions/multi_hmpcgrad/"
+    "python multitask_classifier.py --use_gpu --gpuid $gpu_id --loss_ratio 0.1 1 0.1 --batch_size 4 28 4 --optimizer famo --prediction_out predictions/multi_famo/"
+    "python multitask_classifier.py --use_gpu --gpuid $gpu_id --loss_ratio 1 0 0 --prediction_out predictions/single_sst/"
+    "python multitask_classifier.py --use_gpu --gpuid $gpu_id --loss_ratio 0 1 0 --prediction_out predictions/single_para/"
+    "python multitask_classifier.py --use_gpu --gpuid $gpu_id --loss_ratio 0 0 1 --prediction_out predictions/single_sts/"
     # Add more jobs as needed
 )
 

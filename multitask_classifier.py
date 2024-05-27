@@ -86,7 +86,7 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
-        self.predict_paraphrase_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 2)
+        self.predict_paraphrase_af = nn.Linear(2*BERT_HIDDEN_SIZE, 2)
         self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
         self.cos = torch.nn.CosineSimilarity(dim=1)
@@ -123,9 +123,9 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        _, hidden1 = self.forward(input_ids_1, attention_mask_1)
-        _, hidden2 = self.forward(input_ids_2, attention_mask_2)
-        hidden = torch.cat((hidden1, hidden2), dim=-1)
+        hidden1,_ = self.forward(input_ids_1, attention_mask_1)
+        hidden2,_ = self.forward(input_ids_2, attention_mask_2)
+        hidden = torch.cat((hidden1,hidden2),dim=-1)
         hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
         return logits
@@ -188,7 +188,7 @@ def train_multitask(args):
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
-    print(args.batch_size)
+    print(args.batch_size, args.loss_ratio, args.fine_tune_mode)
 
     sst_train_dataloader = DataLoader(
         sst_train_data,
@@ -260,6 +260,9 @@ def train_multitask(args):
     config = SimpleNamespace(**config)
 
     model = MultitaskBERT(config)
+    if args.model_path:
+        saved = torch.load(args.model_path)
+        model.load_state_dict(saved["model"])
     model = model.to(device)
 
     lr = args.lr
@@ -443,7 +446,7 @@ def train_multitask(args):
                 train_loss = avg_loss.item()
 
         ##### Evaluate sts
-        sts_dev_cor, *_ = model_val_sts(sts_dev_dataloader, model, device)
+        # sts_dev_cor, *_ = model_val_sts(sts_dev_dataloader, model, device)
         # if sts_dev_cor > best_dev_acc:
         #     save_model(model, optimizer, args, config, args.filepath)
 
@@ -452,43 +455,43 @@ def train_multitask(args):
         # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
 
         ##### Evaluate para
-        para_dev_acc, *_ = model_val_para(sts_dev_dataloader, model, device)
+        # para_dev_acc, *_ = model_val_para(sts_dev_dataloader, model, device)
         # if para_dev_acc > best_dev_acc:
         #     save_model(model, optimizer, args, config, args.filepath)
-        with open("training_record_para_sts.csv", "a") as f:
-            f.write(f"{para_dev_acc},{sts_dev_cor}\n")
+        # with open("training_record_para_sts.csv", "a") as f:
+        #     f.write(f"{para_dev_acc},{sts_dev_cor}\n")
 
 
-##### Evaluate multitask
-# sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
-#     model_eval_multitask(
-#         sst_train_dataloader,
-#         para_train_dataloader,
-#         sts_train_dataloader,
-#         model,
-#         device,
-#     )
-# )
-# sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
-# sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
-#     sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
-# )
-# with open('training_record_dev_acc.csv', "a") as f:
-#     f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
+        ##### Evaluate multitask
+        # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+        #     model_eval_multitask(
+        #         sst_train_dataloader,
+        #         para_train_dataloader,
+        #         sts_train_dataloader,
+        #         model,
+        #         device,
+        #     )
+        # )
+        sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
+        sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
+            sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
+        )
+        with open('training_record_dev_acc.csv', "a") as f:
+            f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
-# if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
-#     best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
-#     save_model(model, optimizer, args, config, args.filepath)
+        if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
+            best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
+            save_model(model, optimizer, args, config, args.filepath)
 
-# print(
-#     f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
-#       sst train acc :: {sst_train_acc :.3f}, \
-#       sst dev acc :: {sst_dev_acc :.3f}\
-#       para train acc :: {para_train_acc:.3f}, \
-#       para dev acc :: {para_dev_acc:.3f}, \
-#       sts train corr :: {sts_train_corr :.3f},\
-#       sts dev corr :: {sts_dev_corr:.3f}"
-# )
+        print(
+            f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
+              sst train acc :: {sst_train_acc :.3f}, \
+              sst dev acc :: {sst_dev_acc :.3f}\
+              para train acc :: {para_train_acc:.3f}, \
+              para dev acc :: {para_dev_acc:.3f}, \
+              sts train corr :: {sts_train_corr :.3f},\
+              sts dev corr :: {sts_dev_corr:.3f}"
+        )
 
 
 def test_multitask(args):
@@ -649,32 +652,13 @@ def get_args():
         type=str,
         help="last-linear-layer: the BERT parameters are frozen and the task specific head parameters are updated; full-model: BERT parameters are updated as well",
         choices=("last-linear-layer", "full-model"),
-        default="last-linear-layer",
+        default="full-model",
     )
     parser.add_argument("--use_gpu", action="store_true")
 
     parser.add_argument("--gpuid", type=int, default=0)
 
-    parser.add_argument(
-        "--sst_dev_out", type=str, default="predictions/sst-dev-output.csv"
-    )
-    parser.add_argument(
-        "--sst_test_out", type=str, default="predictions/sst-test-output.csv"
-    )
-
-    parser.add_argument(
-        "--para_dev_out", type=str, default="predictions/para-dev-output.csv"
-    )
-    parser.add_argument(
-        "--para_test_out", type=str, default="predictions/para-test-output.csv"
-    )
-
-    parser.add_argument(
-        "--sts_dev_out", type=str, default="predictions/sts-dev-output.csv"
-    )
-    parser.add_argument(
-        "--sts_test_out", type=str, default="predictions/sts-test-output.csv"
-    )
+    parser.add_argument("--prediction_out", type=str, default="predictions/")
 
     parser.add_argument(
         "--batch_size",
@@ -694,15 +678,25 @@ def get_args():
         default=[1.0, 1.0, 1.0],
         help="ratio of sst, para, sts loss in joint loss",
     )
+    parser.add_argument("--model_path",default="")
+
     args = parser.parse_args()
     return args
+
+    
 
 
 if __name__ == "__main__":
     args = get_args()
     args.filepath = (
-        f"{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
+        f"{args.prediction_out}{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
     )
+    args.sst_dev_out = f"{args.prediction_out}sst-dev-output.csv"
+    args.sst_test_out = f"{args.prediction_out}sst-test-output.csv"
+    args.para_dev_out = f"{args.prediction_out}para-dev-output.csv"
+    args.para_test_out = f"{args.prediction_out}para-test-output.csv"
+    args.sts_dev_out = f"{args.prediction_out}sts-dev-output.csv"
+    args.sts_test_out = f"{args.prediction_out}sts-test-output.csv"
     if len(args.batch_size) != 3:
         args.batch_size = args.batch_size + [args.batch_size[-1]] * (
             3 - len(args.batch_size)
