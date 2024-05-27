@@ -92,7 +92,9 @@ class MultitaskBERT(nn.Module):
         # (e.g., by adding other layers).
 
         state = self.bert.forward(input_ids, attention_mask)
-        return state["pooler_output"]
+        sequence_output = state['last_hidden_state']
+        avg_hidden = torch.mean(sequence_output[:,1:], dim=-1)
+        return state["pooler_output"], avg_hidden
 
     def predict_sentiment(self, input_ids, attention_mask):
         """Given a batch of sentences, outputs logits for classifying sentiment.
@@ -101,7 +103,7 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         """
 
-        hidden = self.forward(input_ids, attention_mask)
+        hidden, _ = self.forward(input_ids, attention_mask)
         hidden = self.dropout_layer(hidden)
         logits = self.sentiment_af(hidden)
         return logits
@@ -113,8 +115,8 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        hidden1 = self.forward(input_ids_1, attention_mask_1)
-        hidden2 = self.forward(input_ids_2, attention_mask_2)
+        hidden1, _ = self.forward(input_ids_1, attention_mask_1)
+        hidden2, _ = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
@@ -126,10 +128,10 @@ class MultitaskBERT(nn.Module):
         """Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
         Note that your output should be unnormalized (a logit).
         """
-        hidden1 = self.forward(input_ids_1, attention_mask_1)
-        hidden2 = self.forward(input_ids_2, attention_mask_2)
+        _, avg_hidden1 = self.forward(input_ids_1, attention_mask_1)
+        _, avg_hidden2 = self.forward(input_ids_2, attention_mask_2)
         # calculate cosine similarity
-        sim_score = self.cos(hidden1, hidden2)
+        sim_score = self.cos(avg_hidden1, avg_hidden2)
         # map sim_score [-1,1] to [0,5]
         sim_score = (sim_score+1)*2.5
         return sim_score
