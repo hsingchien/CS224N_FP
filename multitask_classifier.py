@@ -279,6 +279,9 @@ def train_multitask(args):
 
     best_dev_acc = 0
 
+    # tracking loss for round robin
+    loss_choice = None
+
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
@@ -424,11 +427,22 @@ def train_multitask(args):
 
             elif args.optimizer == "default":
                 ## calculate total loss and backpropagate
-                loss = (
-                    sst_loss * loss_ratio[0]
-                    + para_loss * loss_ratio[1]
-                    + sts_loss * loss_ratio[2]
-                ) / np.sum(loss_ratio)
+                if (args.default_opti_loss == 'total'):
+                    loss = (
+                        sst_loss * loss_ratio[0]
+                        + para_loss * loss_ratio[1]
+                        + sts_loss * loss_ratio[2]
+                    ) / np.sum(loss_ratio)
+                elif (args.default_opti_loss == 'roundrobin'):
+                    if (loss_choice == None or loss_choice == 'sts'):
+                        loss = sst_loss
+                        loss_choice = 'sst'
+                    elif(loss_choice == 'sst'):
+                        loss = para_loss
+                        loss_choice = 'para'
+                    elif(loss_choice == 'para'):
+                        loss = sts_loss
+                        loss_choice = 'sts'
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -642,6 +656,8 @@ def get_args():
     parser.add_argument("--sts_test", type=str, default="data/sts-test-student.csv")
     parser.add_argument("--optimizer", type=str, default="default")
 
+    parser.add_argument("--default_opti_loss", type=str, default='total')
+
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument(
@@ -649,7 +665,7 @@ def get_args():
         type=str,
         help="last-linear-layer: the BERT parameters are frozen and the task specific head parameters are updated; full-model: BERT parameters are updated as well",
         choices=("last-linear-layer", "full-model"),
-        default="last-linear-layer",
+        default="full-model",
     )
     parser.add_argument("--use_gpu", action="store_true")
 
