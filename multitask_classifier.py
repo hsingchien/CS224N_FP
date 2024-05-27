@@ -93,7 +93,7 @@ class MultitaskBERT(nn.Module):
 
         state = self.bert.forward(input_ids, attention_mask)
         sequence_output = state['last_hidden_state']
-        avg_hidden = torch.mean(sequence_output[:,1:], dim=-1)
+        avg_hidden = torch.mean(sequence_output[:,1:], dim=1)
         return state["pooler_output"], avg_hidden
 
     def predict_sentiment(self, input_ids, attention_mask):
