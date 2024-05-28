@@ -27,6 +27,8 @@ from tqdm import tqdm
 from pcgrad import PCGrad
 from famo import FAMO
 
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
+
 from datasets import (
     SentenceClassificationDataset,
     SentenceClassificationTestDataset,
@@ -104,17 +106,36 @@ class MultitaskBERT(nn.Module):
         # avg_hidden = torch.cat((avg_hidden, state["pooler_output"]), dim=-1)
         return state["pooler_output"], avg_hidden
 
-    def predict_sentiment(self, input_ids, attention_mask):
+    def predict_sentiment(self, input_ids, attention_mask, sst_labels=None):
         """Given a batch of sentences, outputs logits for classifying sentiment.
         There are 5 sentiment classes:
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         """
 
-        hidden, _ = self.forward(input_ids, attention_mask)
-        hidden = self.dropout_layer(hidden)
-        logits = self.sentiment_af(hidden)
-        return logits
+        
+        if args.reg == 'default':
+            hidden, _ = self.forward(input_ids, attention_mask)
+            hidden = self.dropout_layer(hidden)
+            logits = self.sentiment_af(hidden)
+            return logits
+        elif args.reg == 'smart':
+            def evalfn(embed):
+                hidden, _ = self.forward(embed, attention_mask = attention_mask)
+                hidden = self.dropout_layer(hidden)
+                logits = self.sentiment_af(hidden)
+                return logits
+            smart_loss_fn = SMARTLoss(eval_fn = evalfn, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
+            # Compute initial (unperturbed) state 
+            logits = evalfn(input_ids)
+            sst_loss = (
+                F.cross_entropy(logits, sst_labels.view(-1), reduction="sum")
+                / args.batch_size[0]
+                )
+            # @TODO investigate this weight 
+            smart_loss = smart_loss_fn(input_ids, logits)
+            sst_loss += 0.02*smart_loss
+            return logits, sst_loss
 
     def predict_paraphrase(
         self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2
@@ -314,11 +335,14 @@ def train_multitask(args):
                 sst_ids = sst_ids.to(device)
                 sst_mask = sst_mask.to(device)
                 sst_labels = sst_labels.to(device)
-                sst_logits = model.predict_sentiment(sst_ids, sst_mask)
-                sst_loss = (
-                    F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
-                    / args.batch_size[0]
-                )
+                if (args.reg == 'default'):
+                    sst_logits = model.predict_sentiment(sst_ids, sst_mask)
+                    sst_loss = (
+                        F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
+                        / args.batch_size[0]
+                    )
+                elif (args.reg == 'smart'):
+                    sst_logits, sst_loss = model.predict_sentiment(sst_ids, sst_mask, sst_labels)
             else:
                 sst_loss = 0
             ## calculate loss of para
@@ -660,6 +684,8 @@ def get_args():
     parser.add_argument("--optimizer", type=str, default="default")
 
     parser.add_argument("--default_opti_loss", type=str, default='total')
+
+    parser.add_argument("--reg", type=str, default='default')
 
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
