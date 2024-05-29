@@ -27,7 +27,7 @@ from tqdm import tqdm
 from pcgrad import PCGrad
 from famo import FAMO
 
-# from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 from datasets import (
     SentenceClassificationDataset,
@@ -674,7 +674,7 @@ def test_multitask(args):
             for p, s in zip(test_sts_sent_ids, test_sts_y_pred):
                 f.write(f"{p} , {s} \n")
         
-        with open(args.prediction_out+"dev_perf.txt","w+") as f:
+        with open(f"{args.prediction_out}dev_perf.txt","w+") as f:
             f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}\n")
             f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}\n")
             f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
