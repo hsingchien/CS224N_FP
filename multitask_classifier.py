@@ -318,18 +318,18 @@ def train_multitask(args):
 
     # tracking loss for round robin
     loss_choice = None
-
+    nconfs_total = np.zeros((args.epochs, N_TASKS))
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
         num_batches = 0
-
+        nconfs_epoch = np.zeros(N_TASKS)
         sst_iterator = iter(sst_train_dataloader)
         sts_iterator = iter(sts_train_dataloader)
         para_iterator = iter(para_train_dataloader)
         for _ in tqdm(
-            range(avg_data_length), desc=f"train-{epoch}", disable=TQDM_DISABLE
+            range(2), desc=f"train-{epoch}", disable=TQDM_DISABLE
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             ## calculate loss of sst
@@ -495,7 +495,9 @@ def train_multitask(args):
                 train_loss = train_loss / (num_batches)
             elif args.optimizer == "hmpcgrad":
                 optimizer.zero_grad()
-                hmpcgrad(model, [sst_loss, para_loss, sts_loss])
+                nconfs = hmpcgrad(model, [sst_loss, para_loss, sts_loss],args.log_pcgrad)
+                nconfs = nconfs/nconfs.sum()
+                nconfs_epoch += nconfs
                 optimizer.step()
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
@@ -526,6 +528,8 @@ def train_multitask(args):
         #         device,
         #     )
         # )
+        nconfs_total[epoch,] = nconfs_epoch/nconfs_epoch.sum()
+        print(f"fraction of grad conflicst:: {nconfs_total[epoch,]}")
         sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
@@ -744,7 +748,7 @@ def get_args():
         help="ratio of sst, para, sts loss in joint loss",
     )
     parser.add_argument("--model_path", default="")
-
+    parser.add_argument("--log_pcgrad", action="store_true")
     args = parser.parse_args()
     return args
 
