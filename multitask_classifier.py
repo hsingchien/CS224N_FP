@@ -88,9 +88,8 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
-        self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE)
-        self.predict_paraphrase_af1 = nn.Linear(BERT_HIDDEN_SIZE,2)
-        self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, BERT_HIDDEN_SIZE*2)
+        self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, 2)
+        # self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, BERT_HIDDEN_SIZE*2)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
         self.cos = torch.nn.CosineSimilarity(dim=1)
 
@@ -151,13 +150,11 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        _, hidden1 = self.forward(input_ids_1, attention_mask_1)
-        _, hidden2 = self.forward(input_ids_2, attention_mask_2)
+        hidden1,_= self.forward(input_ids_1, attention_mask_1)
+        hidden2,_ = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
-        hidden = self.predict_paraphrase_af(hidden)
-        hidden = self.dropout_layer(hidden)
-        logits = self.predict_paraphrase_af1(hidden)
+        logits = self.predict_paraphrase_af(hidden)
         return logits
 
     def predict_similarity(
@@ -169,10 +166,10 @@ class MultitaskBERT(nn.Module):
         _, avg_hidden1 = self.forward(input_ids_1, attention_mask_1)
         _, avg_hidden2 = self.forward(input_ids_2, attention_mask_2)
         # calculate cosine similarity
-        catavg = torch.cat((avg_hidden1,avg_hidden2),dim=-1)
-        catavg = self.predict_similarity_af(catavg)
-        catavg = self.dropout_layer(catavg)
-        avg_hidden1,avg_hidden2 = torch.split(catavg,dim=-1,split_size_or_sections=BERT_HIDDEN_SIZE)
+        # catavg = torch.cat((avg_hidden1,avg_hidden2),dim=-1)
+        # catavg = self.predict_similarity_af(catavg)
+        # catavg = self.dropout_layer(catavg)
+        # avg_hidden1,avg_hidden2 = torch.split(catavg,dim=-1,split_size_or_sections=BERT_HIDDEN_SIZE)
         sim_score = self.cos(avg_hidden1, avg_hidden2)
         return sim_score
 
@@ -297,6 +294,7 @@ def train_multitask(args):
     if args.model_path:
         saved = torch.load(args.model_path)
         model.load_state_dict(saved["model"])
+        print(f"Using trained model from {args.model_path}")
     model = model.to(device)
 
     lr = args.lr
@@ -329,7 +327,7 @@ def train_multitask(args):
         sts_iterator = iter(sts_train_dataloader)
         para_iterator = iter(para_train_dataloader)
         for _ in tqdm(
-            range(2), desc=f"train-{epoch}", disable=TQDM_DISABLE
+            range(avg_data_length), desc=f"train-{epoch}", disable=TQDM_DISABLE
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             ## calculate loss of sst
@@ -496,8 +494,9 @@ def train_multitask(args):
             elif args.optimizer == "hmpcgrad":
                 optimizer.zero_grad()
                 nconfs = hmpcgrad(model, [sst_loss, para_loss, sts_loss],args.log_pcgrad)
-                nconfs = nconfs/nconfs.sum()
-                nconfs_epoch += nconfs
+                if args.log_pcgrad:
+                    nconfs = nconfs/nconfs.sum()
+                    nconfs_epoch += nconfs
                 optimizer.step()
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
@@ -528,15 +527,18 @@ def train_multitask(args):
         #         device,
         #     )
         # )
-        nconfs_total[epoch,] = nconfs_epoch/nconfs_epoch.sum()
-        print(f"fraction of grad conflicst:: {nconfs_total[epoch,]}")
+        if args.log_pcgrad:
+            nconfs_total[epoch,] = nconfs_epoch/nconfs_epoch.sum()
+            print(f"fraction of grad conflicst:: {nconfs_total[epoch,]}")
+
         sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
         with open(f"{args.prediction_out}training_record_dev_acc.csv", "a") as f:
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
-
+        with open(f"{args.prediction_out}nconfs.csv", "a") as f:
+            f.write(f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n")
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
 
         if np.mean(perfs[np.nonzero(loss_ratio > 0)]) > best_dev_acc:
