@@ -27,7 +27,7 @@ from tqdm import tqdm
 from pcgrad import PCGrad
 from famo import FAMO
 
-# from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 from datasets import (
     SentenceClassificationDataset,
@@ -520,7 +520,7 @@ def train_multitask(args):
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
-        with open("training_record_dev_acc.csv", "a") as f:
+        with open(f"{args.prediction_out}training_record_dev_acc.csv", "a") as f:
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
@@ -674,7 +674,7 @@ def test_multitask(args):
             for p, s in zip(test_sts_sent_ids, test_sts_y_pred):
                 f.write(f"{p} , {s} \n")
         
-        with open(args.prediction_out+"dev_perf.txt","w+") as f:
+        with open(f"{args.prediction_out}dev_perf.txt","w+") as f:
             f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}\n")
             f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}\n")
             f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
