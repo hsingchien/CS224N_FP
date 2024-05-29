@@ -520,7 +520,7 @@ def train_multitask(args):
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
-        with open("training_record_dev_acc.csv", "a") as f:
+        with open(f"{args.prediction_out}training_record_dev_acc.csv", "a") as f:
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
