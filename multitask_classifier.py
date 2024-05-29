@@ -88,7 +88,7 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
-        self.predict_paraphrase_af = nn.Linear(2*BERT_HIDDEN_SIZE, 2)
+        self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, 2)
         self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
         self.cos = torch.nn.CosineSimilarity(dim=1)
@@ -113,28 +113,31 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         """
 
-        
-        if args.reg == 'default':
+        if args.reg == "default":
             hidden, _ = self.forward(input_ids, attention_mask)
             hidden = self.dropout_layer(hidden)
             logits = self.sentiment_af(hidden)
             return logits
-        elif args.reg == 'smart':
+        elif args.reg == "smart":
+
             def evalfn(embed):
-                hidden, _ = self.forward(embed, attention_mask = attention_mask)
+                hidden, _ = self.forward(embed, attention_mask=attention_mask)
                 hidden = self.dropout_layer(hidden)
                 logits = self.sentiment_af(hidden)
                 return logits
-            smart_loss_fn = SMARTLoss(eval_fn = evalfn, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
-            # Compute initial (unperturbed) state 
+
+            smart_loss_fn = SMARTLoss(
+                eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
+            )
+            # Compute initial (unperturbed) state
             logits = evalfn(input_ids)
             sst_loss = (
                 F.cross_entropy(logits, sst_labels.view(-1), reduction="sum")
                 / args.batch_size[0]
-                )
-            # @TODO investigate this weight 
+            )
+            # @TODO investigate this weight
             smart_loss = smart_loss_fn(input_ids, logits)
-            sst_loss += 0.02*smart_loss
+            sst_loss += 0.02 * smart_loss
             return logits, sst_loss
 
     def predict_paraphrase(
@@ -144,9 +147,9 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        hidden1,_ = self.forward(input_ids_1, attention_mask_1)
-        hidden2,_ = self.forward(input_ids_2, attention_mask_2)
-        hidden = torch.cat((hidden1,hidden2),dim=-1)
+        hidden1, _ = self.forward(input_ids_1, attention_mask_1)
+        hidden2, _ = self.forward(input_ids_2, attention_mask_2)
+        hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
         return logits
@@ -335,14 +338,18 @@ def train_multitask(args):
                 sst_ids = sst_ids.to(device)
                 sst_mask = sst_mask.to(device)
                 sst_labels = sst_labels.to(device)
-                if (args.reg == 'default'):
+                if args.reg == "default":
                     sst_logits = model.predict_sentiment(sst_ids, sst_mask)
                     sst_loss = (
-                        F.cross_entropy(sst_logits, sst_labels.view(-1), reduction="sum")
+                        F.cross_entropy(
+                            sst_logits, sst_labels.view(-1), reduction="sum"
+                        )
                         / args.batch_size[0]
                     )
-                elif (args.reg == 'smart'):
-                    sst_logits, sst_loss = model.predict_sentiment(sst_ids, sst_mask, sst_labels)
+                elif args.reg == "smart":
+                    sst_logits, sst_loss = model.predict_sentiment(
+                        sst_ids, sst_mask, sst_labels
+                    )
             else:
                 sst_loss = 0
             ## calculate loss of para
@@ -454,22 +461,22 @@ def train_multitask(args):
 
             elif args.optimizer == "default":
                 ## calculate total loss and backpropagate
-                if (args.default_opti_loss == 'total'):
+                if args.default_opti_loss == "total":
                     loss = (
                         sst_loss * loss_ratio[0]
                         + para_loss * loss_ratio[1]
                         + sts_loss * loss_ratio[2]
                     ) / np.sum(loss_ratio)
-                elif (args.default_opti_loss == 'roundrobin'):
-                    if (loss_choice == None or loss_choice == 'sts'):
+                elif args.default_opti_loss == "roundrobin":
+                    if loss_choice == None or loss_choice == "sts":
                         loss = sst_loss
-                        loss_choice = 'sst'
-                    elif(loss_choice == 'sst'):
+                        loss_choice = "sst"
+                    elif loss_choice == "sst":
                         loss = para_loss
-                        loss_choice = 'para'
-                    elif(loss_choice == 'para'):
+                        loss_choice = "para"
+                    elif loss_choice == "para":
                         loss = sts_loss
-                        loss_choice = 'sts'
+                        loss_choice = "sts"
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -499,7 +506,6 @@ def train_multitask(args):
         # with open("training_record_para_sts.csv", "a") as f:
         #     f.write(f"{para_dev_acc},{sts_dev_cor}\n")
 
-
         ##### Evaluate multitask
         # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
         #     model_eval_multitask(
@@ -510,15 +516,17 @@ def train_multitask(args):
         #         device,
         #     )
         # )
-        sst_train_acc, para_train_acc, sts_train_corr = 0,0,0
+        sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
             sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
         )
-        with open('training_record_dev_acc.csv', "a") as f:
+        with open("training_record_dev_acc.csv", "a") as f:
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
 
-        if np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr)) > best_dev_acc:
-            best_dev_acc = np.mean((sst_dev_acc, para_dev_acc, sts_dev_corr))
+        perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
+
+        if np.mean(perfs[np.nonzero(loss_ratio > 0)]) > best_dev_acc:
+            best_dev_acc = np.mean(perfs[np.nonzero(loss_ratio > 0)])
             save_model(model, optimizer, args, config, args.filepath)
 
         print(
@@ -688,9 +696,9 @@ def get_args():
     parser.add_argument("--sts_test", type=str, default="data/sts-test-student.csv")
     parser.add_argument("--optimizer", type=str, default="default")
 
-    parser.add_argument("--default_opti_loss", type=str, default='total')
+    parser.add_argument("--default_opti_loss", type=str, default="total")
 
-    parser.add_argument("--reg", type=str, default='default')
+    parser.add_argument("--reg", type=str, default="default")
 
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
@@ -725,19 +733,15 @@ def get_args():
         default=[1.0, 1.0, 1.0],
         help="ratio of sst, para, sts loss in joint loss",
     )
-    parser.add_argument("--model_path",default="")
+    parser.add_argument("--model_path", default="")
 
     args = parser.parse_args()
     return args
 
-    
-
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = (
-        f"{args.prediction_out}{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
-    )
+    args.filepath = f"{args.prediction_out}{args.fine_tune_mode}-{args.epochs}-{args.lr}-multitask.pt"  # Save path.
     args.sst_dev_out = f"{args.prediction_out}sst-dev-output.csv"
     args.sst_test_out = f"{args.prediction_out}sst-test-output.csv"
     args.para_dev_out = f"{args.prediction_out}para-dev-output.csv"
