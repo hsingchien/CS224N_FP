@@ -88,8 +88,9 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
-        self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, 2)
-        self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
+        self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, BERT_HIDDEN_SIZE)
+        self.predict_paraphrase_af1 = nn.Linear(BERT_HIDDEN_SIZE,2)
+        self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, BERT_HIDDEN_SIZE*2)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
         self.cos = torch.nn.CosineSimilarity(dim=1)
 
@@ -147,11 +148,13 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        hidden1, _ = self.forward(input_ids_1, attention_mask_1)
-        hidden2, _ = self.forward(input_ids_2, attention_mask_2)
+        _, hidden1 = self.forward(input_ids_1, attention_mask_1)
+        _, hidden2 = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
-        logits = self.predict_paraphrase_af(hidden)
+        hidden = self.predict_paraphrase_af(hidden)
+        hidden = self.dropout_layer(hidden)
+        logits = self.predict_paraphrase_af1(hidden)
         return logits
 
     def predict_similarity(
@@ -163,6 +166,10 @@ class MultitaskBERT(nn.Module):
         _, avg_hidden1 = self.forward(input_ids_1, attention_mask_1)
         _, avg_hidden2 = self.forward(input_ids_2, attention_mask_2)
         # calculate cosine similarity
+        catavg = torch.cat((avg_hidden1,avg_hidden2),dim=-1)
+        catavg = self.predict_similarity_af(catavg)
+        catavg = self.dropout_layer(catavg)
+        avg_hidden1,avg_hidden2 = torch.split(catavg,dim=-1,split_size_or_sections=BERT_HIDDEN_SIZE)
         sim_score = self.cos(avg_hidden1, avg_hidden2)
         return sim_score
 

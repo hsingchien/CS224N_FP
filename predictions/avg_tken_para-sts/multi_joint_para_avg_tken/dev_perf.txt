@@ -1,0 +1,24 @@
+dev sentiment acc :: 0.520
+dev paraphrase acc :: 0.805
+dev sts corr :: 0.633
+
+python multitask_classifier.py --use_gpu --gpuid 0 --loss_ratio 0.1 1 0.1 --batch_size 4 28 4 --prediction_out predictions/multi_joint_para_avg_tken/
+
+predict para:
+	_, hidden1 = self.forward(input_ids_1, attention_mask_1)
+        _, hidden2 = self.forward(input_ids_2, attention_mask_2)
+        hidden = torch.cat((hidden1, hidden2), dim=-1)
+        hidden = self.dropout_layer(hidden)
+        hidden = self.predict_paraphrase_af(hidden)  # 2xHIDDEN_SIZE -> HIDDEN_SIZE
+        hidden = self.dropout_layer(hidden)
+        logits = self.predict_paraphrase_af1(hidden) # HIDDEN_SIZE -> 2
+
+predict sts:
+	_, avg_hidden1 = self.forward(input_ids_1, attention_mask_1)
+        _, avg_hidden2 = self.forward(input_ids_2, attention_mask_2)
+        # calculate cosine similarity
+        catavg = torch.cat((avg_hidden1,avg_hidden2),dim=-1)
+        catavg = self.predict_similarity_af(catavg) # 2xHIDDEN_SIZE -> 2xHIDDEN_SIZE
+        catavg = self.dropout_layer(catavg)
+        avg_hidden1,avg_hidden2 = torch.split(catavg,dim=-1,split_size_or_sections=BERT_HIDDEN_SIZE)
+        sim_score = self.cos(avg_hidden1, avg_hidden2)
