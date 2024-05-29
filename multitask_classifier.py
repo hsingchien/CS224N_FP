@@ -27,7 +27,7 @@ from tqdm import tqdm
 from pcgrad import PCGrad
 from famo import FAMO
 
-from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
+# from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 from datasets import (
     SentenceClassificationDataset,
@@ -636,7 +636,6 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Sentiment \n")
             for p, s in zip(dev_sst_sent_ids, dev_sst_y_pred):
                 f.write(f"{p} , {s} \n")
-            f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}")
 
         with open(args.sst_test_out, "w+") as f:
             f.write(f"id \t Predicted_Sentiment \n")
@@ -648,7 +647,7 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Is_Paraphrase \n")
             for p, s in zip(dev_para_sent_ids, dev_para_y_pred):
                 f.write(f"{p} , {s} \n")
-            f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}")
+            
 
         with open(args.para_test_out, "w+") as f:
             f.write(f"id \t Predicted_Is_Paraphrase \n")
@@ -660,12 +659,18 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Similiary \n")
             for p, s in zip(dev_sts_sent_ids, dev_sts_y_pred):
                 f.write(f"{p} , {s} \n")
-            f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
+            
 
         with open(args.sts_test_out, "w+") as f:
             f.write(f"id \t Predicted_Similiary \n")
             for p, s in zip(test_sts_sent_ids, test_sts_y_pred):
                 f.write(f"{p} , {s} \n")
+        
+        with open(args.prediction_out+"dev_perf.txt","w+") as f:
+            f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}\n")
+            f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}\n")
+            f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
+
 
 
 def get_args():
