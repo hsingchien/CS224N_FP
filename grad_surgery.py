@@ -19,6 +19,8 @@ def hmpcgrad(model, losses):
         # check if this_grads is filled with None
         if len(grad_idx)>1:
             modified_grad = grad_surgery(this_grads)
+            # take only valid grads
+            modified_grad = [grad for grad in modified_grad if grad is not None]
             modified_grad = torch.stack(modified_grad, dim=0).sum(dim=0)
             param.grad = modified_grad
         elif len(grad_idx)==1:
