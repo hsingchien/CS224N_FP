@@ -549,8 +549,8 @@ def train_multitask(args):
         #     )
         # )
         if args.log_pcgrad:
-            nconfs_total[epoch,] = nconfs_epoch / nconfs_epoch.sum()
-            print(f"fraction of grad conflicst:: {nconfs_total[epoch,]}")
+            # nconfs_total[epoch,] = nconfs_epoch / nconfs_epoch.sum()
+            print(f"number of conflicts in this epoch:: {nconfs_total[epoch,]}")
 
         sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
         sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
@@ -560,7 +560,7 @@ def train_multitask(args):
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
         with open(f"{args.prediction_out}nconfs.csv", "a") as f:
             f.write(
-                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n"
+                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n" # print number of conflicts into file
             )
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
 
@@ -577,7 +577,6 @@ def train_multitask(args):
               sts train corr :: {sts_train_corr :.3f},\
               sts dev corr :: {sts_dev_corr:.3f}"
         )
-
 
 def test_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
