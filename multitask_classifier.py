@@ -114,13 +114,12 @@ class MultitaskBERT(nn.Module):
         """
 
         if args.reg == "default":
-            hidden, _ = self.forward(input_ids, attention_mask)
+            hidden, _= self.forward(input_ids, attention_mask)
             hidden = self.dropout_layer(hidden)
             logits = self.sentiment_af(hidden)
             return logits
         elif args.reg == "smart":
             embed = self.bert.embed(input_ids)
-
             def evalfn(embed):
                 sequence_output = self.bert.encode(embed, attention_mask=attention_mask)
                 first_tk = sequence_output[:, 0]
@@ -130,7 +129,6 @@ class MultitaskBERT(nn.Module):
                 hidden = self.dropout_layer(hidden)
                 logits = self.sentiment_af(hidden)
                 return logits
-
             smart_loss_fn = SMARTLoss(
                 eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
             )
@@ -144,6 +142,17 @@ class MultitaskBERT(nn.Module):
             smart_loss = smart_loss_fn(embed, logits)
             sst_loss += 0.02 * smart_loss
             return logits, sst_loss
+
+    def predict_sentiment(self, input_ids, attention_mask, sst_labels=None):
+        """Given a batch of sentences, outputs logits for classifying sentiment.
+        There are 5 sentiment classes:
+        (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
+        Thus, your output should contain 5 logits for each sentence.
+        """
+        hidden, _= self.forward(input_ids, attention_mask)
+        hidden = self.dropout_layer(hidden)
+        logits = self.sentiment_af(hidden)
+        return logits
 
     def predict_paraphrase(
         self, input_ids_1, attention_mask_1, input_ids_2, attention_mask_2
@@ -357,7 +366,7 @@ def train_multitask(args):
                         / args.batch_size[0]
                     )
                 elif args.reg == "smart":
-                    sst_logits, sst_loss = model.predict_sentiment(
+                    sst_logits, sst_loss = model.predict_sentiment_smart(
                         sst_ids, sst_mask, sst_labels
                     )
             else:
