@@ -112,36 +112,35 @@ class MultitaskBERT(nn.Module):
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         """
-
-        if args.reg == "default":
-            hidden, _= self.forward(input_ids, attention_mask)
+        hidden, _= self.forward(input_ids, attention_mask)
+        hidden = self.dropout_layer(hidden)
+        logits = self.sentiment_af(hidden)
+        return logits
+    
+    def predict_sentiment_smart(self, input_ids, attention_mask, sst_labels=None):
+        embed = self.bert.embed(input_ids)
+        def evalfn(embed):
+            sequence_output = self.bert.encode(embed, attention_mask=attention_mask)
+            first_tk = sequence_output[:, 0]
+            first_tk = self.bert.pooler_dense(first_tk)
+            first_tk = self.bert.pooler_af(first_tk)
+            hidden = first_tk
             hidden = self.dropout_layer(hidden)
             logits = self.sentiment_af(hidden)
             return logits
-        elif args.reg == "smart":
-            embed = self.bert.embed(input_ids)
-            def evalfn(embed):
-                sequence_output = self.bert.encode(embed, attention_mask=attention_mask)
-                first_tk = sequence_output[:, 0]
-                first_tk = self.bert.pooler_dense(first_tk)
-                first_tk = self.bert.pooler_af(first_tk)
-                hidden = first_tk
-                hidden = self.dropout_layer(hidden)
-                logits = self.sentiment_af(hidden)
-                return logits
-            smart_loss_fn = SMARTLoss(
-                eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
-            )
-            # Compute initial (unperturbed) state
-            logits = evalfn(embed)
-            sst_loss = (
-                F.cross_entropy(logits, sst_labels.view(-1), reduction="sum")
-                / args.batch_size[0]
-            )
-            # @TODO investigate this weight
-            smart_loss = smart_loss_fn(embed, logits)
-            sst_loss += 0.02 * smart_loss
-            return logits, sst_loss
+        smart_loss_fn = SMARTLoss(
+            eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
+        )
+        # Compute initial (unperturbed) state
+        logits = evalfn(embed)
+        sst_loss = (
+            F.cross_entropy(logits, sst_labels.view(-1), reduction="sum")
+            / args.batch_size[0]
+        )
+        # @TODO investigate this weight
+        smart_loss = smart_loss_fn(embed, logits)
+        sst_loss += 0.02 * smart_loss
+        return logits, sst_loss
 
     def predict_sentiment(self, input_ids, attention_mask, sst_labels=None):
         """Given a batch of sentences, outputs logits for classifying sentiment.

@@ -89,7 +89,7 @@ class PCGrad:
             for g_j_dx in np.random.permutation(num_task):
                 if g_i_dx == g_j_dx:
                     continue
-                g_j = grads[g_j_dx]
+                g_j = grads[g_j_dx] 
                 # for g_j in grads:
                 g_i_g_j = torch.dot(g_i, g_j)
                 if g_i_g_j < 0:
@@ -97,8 +97,8 @@ class PCGrad:
                     g_i -= (g_i_g_j) * g_j / (g_j.norm() ** 2)
                     num_conflict[
                         g_i_dx + g_j_dx - 1
-                    ] += 1  # special case for num_task=3
-        num_conflict /= 2  # each conflict is counted twice
+                    ] = np.max((1,num_conflict[g_i_dx + g_j_dx - 1]))  # special case for num_task=3
+        # num_conflict /= 2  # each conflict is counted twice
         merged_grad = torch.zeros_like(grads[0]).to(grads[0].device)
         if self._reduction:
             merged_grad[shared] = torch.stack([g[shared] for g in pc_grad]).mean(dim=0)
