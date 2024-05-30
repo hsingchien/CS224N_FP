@@ -326,7 +326,7 @@ def train_multitask(args):
         sst_iterator = iter(sst_train_dataloader)
         sts_iterator = iter(sts_train_dataloader)
         para_iterator = iter(para_train_dataloader)
-        for _ in tqdm(
+        for iternum in tqdm(
             range(avg_data_length), desc=f"train-{epoch}", disable=TQDM_DISABLE
         ):
             # for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
@@ -495,8 +495,13 @@ def train_multitask(args):
                 optimizer.zero_grad()
                 nconfs = hmpcgrad(model, [sst_loss, para_loss, sts_loss],args.log_pcgrad)
                 if args.log_pcgrad:
+                    print(nconfs)
+                    nconfs = np.nan_to_num(nconfs,True,0)
                     nconfs = nconfs/nconfs.sum()
+                    nconfs = np.nan_to_num(nconfs,True,0)
                     nconfs_epoch += nconfs
+                    if iternum % 300 == 0:
+                        print(nconfs_epoch)
                 optimizer.step()
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()

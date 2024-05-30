@@ -6,7 +6,7 @@ def hmpcgrad(model, losses, log=False):
     # First set all grads to None
     grad_dict = dict()
     # Numpy array to contain number of task conflicts across all params in this optimization step
-    nconfs_total = np.zeros(num_tasks) if log else None
+    nconfs_total = np.zeros(num_tasks)
     # Store the task specific grads in a dict
     for kid, kloss in enumerate(losses):
         zero_grad_model(model)
