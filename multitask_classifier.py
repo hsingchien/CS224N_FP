@@ -114,12 +114,13 @@ class MultitaskBERT(nn.Module):
         """
 
         if args.reg == "default":
-            hidden, _= self.forward(input_ids, attention_mask)
+            hidden, _ = self.forward(input_ids, attention_mask)
             hidden = self.dropout_layer(hidden)
             logits = self.sentiment_af(hidden)
             return logits
         elif args.reg == "smart":
             embed = self.bert.embed(input_ids)
+
             def evalfn(embed):
                 sequence_output = self.bert.encode(embed, attention_mask=attention_mask)
                 first_tk = sequence_output[:, 0]
@@ -129,6 +130,7 @@ class MultitaskBERT(nn.Module):
                 hidden = self.dropout_layer(hidden)
                 logits = self.sentiment_af(hidden)
                 return logits
+
             smart_loss_fn = SMARTLoss(
                 eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
             )
@@ -150,8 +152,8 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         """
-        hidden1,_= self.forward(input_ids_1, attention_mask_1)
-        hidden2,_ = self.forward(input_ids_2, attention_mask_2)
+        hidden1, _ = self.forward(input_ids_1, attention_mask_1)
+        hidden2, _ = self.forward(input_ids_2, attention_mask_2)
         hidden = torch.cat((hidden1, hidden2), dim=-1)
         hidden = self.dropout_layer(hidden)
         logits = self.predict_paraphrase_af(hidden)
@@ -424,7 +426,10 @@ def train_multitask(args):
 
             if args.optimizer == "pcgrad":
                 losses = [sst_loss, para_loss, sts_loss]
-                optimizer.pc_backward(losses)
+                num_conflict = optimizer.pc_backward(losses)
+                nconfs_total[epoch,] += num_conflict
+                if iternum % 300 == 0:
+                    print(nconfs_total[epoch,])
                 optimizer.step()
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
@@ -493,12 +498,14 @@ def train_multitask(args):
                 train_loss = train_loss / (num_batches)
             elif args.optimizer == "hmpcgrad":
                 optimizer.zero_grad()
-                nconfs = hmpcgrad(model, [sst_loss, para_loss, sts_loss],args.log_pcgrad)
+                nconfs = hmpcgrad(
+                    model, [sst_loss, para_loss, sts_loss], args.log_pcgrad
+                )
                 if args.log_pcgrad:
                     print(nconfs)
-                    nconfs = np.nan_to_num(nconfs,True,0)
-                    nconfs = nconfs/nconfs.sum()
-                    nconfs = np.nan_to_num(nconfs,True,0)
+                    nconfs = np.nan_to_num(nconfs, True, 0)
+                    nconfs = nconfs / nconfs.sum()
+                    nconfs = np.nan_to_num(nconfs, True, 0)
                     nconfs_epoch += nconfs
                     if iternum % 300 == 0:
                         print(nconfs_epoch)
@@ -533,7 +540,7 @@ def train_multitask(args):
         #     )
         # )
         if args.log_pcgrad:
-            nconfs_total[epoch,] = nconfs_epoch/nconfs_epoch.sum()
+            nconfs_total[epoch,] = nconfs_epoch / nconfs_epoch.sum()
             print(f"fraction of grad conflicst:: {nconfs_total[epoch,]}")
 
         sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
@@ -543,7 +550,9 @@ def train_multitask(args):
         with open(f"{args.prediction_out}training_record_dev_acc.csv", "a") as f:
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
         with open(f"{args.prediction_out}nconfs.csv", "a") as f:
-            f.write(f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n")
+            f.write(
+                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n"
+            )
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
 
         if np.mean(perfs[np.nonzero(loss_ratio > 0)]) > best_dev_acc:
@@ -676,7 +685,6 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Is_Paraphrase \n")
             for p, s in zip(dev_para_sent_ids, dev_para_y_pred):
                 f.write(f"{p} , {s} \n")
-            
 
         with open(args.para_test_out, "w+") as f:
             f.write(f"id \t Predicted_Is_Paraphrase \n")
@@ -688,18 +696,16 @@ def test_multitask(args):
             f.write(f"id \t Predicted_Similiary \n")
             for p, s in zip(dev_sts_sent_ids, dev_sts_y_pred):
                 f.write(f"{p} , {s} \n")
-            
 
         with open(args.sts_test_out, "w+") as f:
             f.write(f"id \t Predicted_Similiary \n")
             for p, s in zip(test_sts_sent_ids, test_sts_y_pred):
                 f.write(f"{p} , {s} \n")
-        
-        with open(f"{args.prediction_out}dev_perf.txt","w+") as f:
+
+        with open(f"{args.prediction_out}dev_perf.txt", "w+") as f:
             f.write(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}\n")
             f.write(f"dev paraphrase acc :: {dev_paraphrase_accuracy :.3f}\n")
             f.write(f"dev sts corr :: {dev_sts_corr :.3f}")
-
 
 
 def get_args():
