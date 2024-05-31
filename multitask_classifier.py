@@ -419,7 +419,7 @@ def train_multitask(args):
                 sts_mask1 = sts_mask1.to(device)
                 sts_ids2 = sts_ids2.to(device)
                 sts_mask2 = sts_mask2.to(device)
-                sts_labels = sts_labels.float() / 5
+                sts_labels = sts_labels.float()/10+0.25 #0-5
                 sts_labels = sts_labels.to(device)
 
                 sts_score = model.predict_similarity(
@@ -521,10 +521,17 @@ def train_multitask(args):
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
 
-        ##### Evaluate sts
-        # sts_dev_cor, *_ = model_val_sts(sts_dev_dataloader, model, device)
+        #### Evaluate sts
+        # sts_dev_cor, sts_y_hat, sts_y_id = model_val_sts(sts_dev_dataloader, model, device)
         # if sts_dev_cor > best_dev_acc:
         #     save_model(model, optimizer, args, config, args.filepath)
+        # with open(f"{args.prediction_out}sts_eval.csv","a") as f:
+        #     f.write(f"{sts_dev_cor}\n")
+        # with open(args.sts_dev_out, "w+") as f:
+        #     print(f"dev sts corr :: {sts_dev_cor :.3f}")
+        #     f.write(f"id \t Predicted_Similiary \n")
+        #     for p, s in zip(sts_y_id, sts_y_hat):
+        #         f.write(f"{p} , {s} \n")
 
         ##### Evaluate sst
         # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
@@ -537,16 +544,16 @@ def train_multitask(args):
         # with open("training_record_para_sts.csv", "a") as f:
         #     f.write(f"{para_dev_acc},{sts_dev_cor}\n")
 
-        ##### Evaluate multitask
-        # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
-        #     model_eval_multitask(
-        #         sst_train_dataloader,
-        #         para_train_dataloader,
-        #         sts_train_dataloader,
-        #         model,
-        #         device,
-        #     )
-        # )
+        #### Evaluate multitask
+        sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+            model_eval_multitask(
+                sst_train_dataloader,
+                para_train_dataloader,
+                sts_train_dataloader,
+                model,
+                device,
+            )
+        )
         if args.log_pcgrad:
             # nconfs_total[epoch,] = nconfs_epoch / nconfs_epoch.sum()
             print(f"number of conflicts in this epoch:: {nconfs_total[epoch,]}")
