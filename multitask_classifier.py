@@ -112,13 +112,14 @@ class MultitaskBERT(nn.Module):
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         """
-        hidden, _= self.forward(input_ids, attention_mask)
+        hidden, _ = self.forward(input_ids, attention_mask)
         hidden = self.dropout_layer(hidden)
         logits = self.sentiment_af(hidden)
         return logits
-    
+
     def predict_sentiment_smart(self, input_ids, attention_mask, sst_labels=None):
         embed = self.bert.embed(input_ids)
+
         def evalfn(embed):
             sequence_output = self.bert.encode(embed, attention_mask=attention_mask)
             first_tk = sequence_output[:, 0]
@@ -128,6 +129,7 @@ class MultitaskBERT(nn.Module):
             hidden = self.dropout_layer(hidden)
             logits = self.sentiment_af(hidden)
             return logits
+
         smart_loss_fn = SMARTLoss(
             eval_fn=evalfn, loss_fn=kl_loss, loss_last_fn=sym_kl_loss
         )
@@ -148,7 +150,7 @@ class MultitaskBERT(nn.Module):
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
         Thus, your output should contain 5 logits for each sentence.
         """
-        hidden, _= self.forward(input_ids, attention_mask)
+        hidden, _ = self.forward(input_ids, attention_mask)
         hidden = self.dropout_layer(hidden)
         logits = self.sentiment_af(hidden)
         return logits
@@ -260,8 +262,8 @@ def train_multitask(args):
         collate_fn=para_dev_data.collate_fn,
     )
 
-    sts_train_data = SentencePairDataset(sts_train_data, args)
-    sts_dev_data = SentencePairDataset(sts_dev_data, args)
+    sts_train_data = SentencePairDataset(sts_train_data, args, isRegression=True)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
 
     sts_train_dataloader = DataLoader(
         sts_train_data,
@@ -419,7 +421,7 @@ def train_multitask(args):
                 sts_mask1 = sts_mask1.to(device)
                 sts_ids2 = sts_ids2.to(device)
                 sts_mask2 = sts_mask2.to(device)
-                sts_labels = sts_labels.float()/10+0.25 #0-5
+                sts_labels = sts_labels.float() / 10 + 0.25  # 0-5
                 sts_labels = sts_labels.to(device)
 
                 sts_score = model.predict_similarity(
@@ -566,7 +568,7 @@ def train_multitask(args):
             f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
         with open(f"{args.prediction_out}nconfs.csv", "a") as f:
             f.write(
-                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n" # print number of conflicts into file
+                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n"  # print number of conflicts into file
             )
         perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
 
@@ -583,6 +585,7 @@ def train_multitask(args):
               sts train corr :: {sts_train_corr :.3f},\
               sts dev corr :: {sts_dev_corr:.3f}"
         )
+
 
 def test_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
