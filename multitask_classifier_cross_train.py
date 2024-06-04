@@ -362,12 +362,17 @@ def train_multitask(args):
             else:
                 sst_loss = 0
             ## calculate loss of para
-            if loss_ratio[1] > 0:
+            if loss_ratio[1] > 0 or loss_ratio[2] > 0:
                 try:
                     para_batch = next(para_iterator)
                 except StopIteration:
                     para_iterator = iter(para_train_dataloader)
                     para_batch = next(para_iterator)
+                try:
+                    sts_batch = next(sts_iterator)
+                except StopIteration:
+                    sts_iterator = iter(sts_train_dataloader)
+                    sts_batch = next(sts_iterator)
 
                 para_ids1, para_mask1, para_ids2, para_mask2, para_labels = (
                     para_batch["token_ids_1"],
@@ -384,20 +389,6 @@ def train_multitask(args):
                 para_logits = model.predict_paraphrase(
                     para_ids1, para_mask1, para_ids2, para_mask2
                 )
-                para_loss = (
-                    F.cross_entropy(para_logits, para_labels.view(-1), reduction="sum")
-                    / args.batch_size[1]
-                )
-            else:
-                para_loss = 0
-
-            ## calculate loss of sts
-            if loss_ratio[2] > 0:
-                try:
-                    sts_batch = next(sts_iterator)
-                except StopIteration:
-                    sts_iterator = iter(sts_train_dataloader)
-                    sts_batch = next(sts_iterator)
 
                 sts_ids1, sts_mask1, sts_ids2, sts_mask2, sts_labels = (
                     sts_batch["token_ids_1"],
@@ -410,17 +401,30 @@ def train_multitask(args):
                 sts_mask1 = sts_mask1.to(device)
                 sts_ids2 = sts_ids2.to(device)
                 sts_mask2 = sts_mask2.to(device)
-                sts_labels = sts_labels.float()/5  # 0-5
+                sts_labels = sts_labels.float() / 5  # 0-5
                 sts_labels = sts_labels.to(device)
 
                 sts_score = model.predict_similarity(
                     sts_ids1, sts_mask1, sts_ids2, sts_mask2
                 )
-                sts_loss = (
-                    F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="sum")
-                    / args.batch_size[2]
-                )
+                # Also use sts batch for para: 0-3 => 0; 4-5 => 1
+                sts_para_logits = model.predict_paraphrase(sts_ids1, sts_mask1, sts_ids2, sts_mask2)
+                sts_para_label = torch.clone(sts_labels.detach())
+                sts_para_label[sts_para_label<4] = 0
+                sts_para_label[sts_para_label>=4] = 1
+                sts_para_label = sts_para_label.long()
+                # Use para for sts, set 1 to 5 and 0 to 0
+                para_sts_logits = model.predict_similarity(para_ids1,para_mask1,para_ids2,para_mask2)
+                para_sts_labels = torch.clone(para_labels.detach())
+                para_sts_labels[para_sts_labels==1] = 5
+                para_sts_labels = para_sts_labels.float()
+
+                # Now calculate the final loss
+                para_loss = F.cross_entropy(torch.cat((para_logits,sts_para_logits),dim=0), torch.cat((para_labels.view(-1),sts_para_label.view(-1))), reduction="mean")
+                sts_loss = F.mse_loss(torch.cat((sts_score.view(-1),para_sts_logits.view(-1)),dim=0),torch.cat((sts_labels.view(-1),para_sts_labels.view(-1))), reduction="mean")
+                
             else:
+                para_loss = 0
                 sts_loss = 0
 
             if args.optimizer == "pcgrad":
