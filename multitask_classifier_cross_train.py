@@ -414,14 +414,17 @@ def train_multitask(args):
                 sts_para_label[sts_para_label>=4] = 1
                 sts_para_label = sts_para_label.long()
                 # Use para for sts, set 1 to 5 and 0 to 0
+                # To balance the sample size, randomly sample batch_size[2] of para sample, randomly assign 0-3 value to 0s
                 para_sts_logits = model.predict_similarity(para_ids1,para_mask1,para_ids2,para_mask2)
                 para_sts_labels = torch.clone(para_labels.detach())
-                para_sts_labels[para_sts_labels==1] = 5
                 para_sts_labels = para_sts_labels.float()
+                para_sts_labels[para_sts_labels==0] += 2*torch.rand(int(para_sts_labels.shape[0] - para_sts_labels.sum().detach().item()), device=device)
+                para_sts_labels[para_sts_labels==1] = 5
+                
 
-                # Now calculate the final loss
-                para_loss = F.cross_entropy(torch.cat((para_logits,sts_para_logits),dim=0), torch.cat((para_labels.view(-1),sts_para_label.view(-1))), reduction="mean")
-                sts_loss = F.mse_loss(torch.cat((sts_score.view(-1),para_sts_logits.view(-1)),dim=0),torch.cat((sts_labels.view(-1),para_sts_labels.view(-1))), reduction="mean")
+                # Now calculate the final loss (weighted sum)
+                para_loss = 0.7*F.cross_entropy(para_logits,para_labels.view(-1),reduction="mean") + 0.3*F.cross_entropy(sts_para_logits, sts_para_label.view(-1), reduction="mean")
+                sts_loss = 0.8*F.mse_loss(sts_score.view(-1), sts_labels.view(-1)) + 0.2*F.mse_loss(para_sts_logits.view(-1), para_sts_labels.view(-1), reduction="mean")
                 
             else:
                 para_loss = 0
