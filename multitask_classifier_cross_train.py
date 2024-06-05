@@ -414,7 +414,7 @@ def train_multitask(args):
                 sts_para_label[sts_para_label>=4] = 1
                 sts_para_label = sts_para_label.long()
                 # Use para for sts, set 1 to 5 and 0 to 0
-                # To balance the sample size, randomly sample batch_size[2] of para sample, randomly assign 0-3 value to 0s
+                # To balance the sample size, ran/domly sample batch_size[2] of para sample, randomly assign 0-3 value to 0s
                 para_sts_logits = model.predict_similarity(para_ids1,para_mask1,para_ids2,para_mask2)
                 para_sts_labels = torch.clone(para_labels.detach())
                 para_sts_labels = para_sts_labels.float()
