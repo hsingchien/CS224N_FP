@@ -209,6 +209,7 @@ def train_multitask(args):
     in datasets.py to load in examples from the Quora and SemEval datasets.
     """
     device = torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
+    print(args.batch_size, args.loss_ratio, args.fine_tune_mode)
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels, para_train_data, sts_train_data = load_multitask_data(
         args.sst_train, args.para_train, args.sts_train, split="train"
@@ -217,10 +218,7 @@ def train_multitask(args):
         args.sst_dev, args.para_dev, args.sts_dev, split="train"
     )
 
-    sst_train_data = SentenceClassificationDataset(sst_train_data, args)
-    sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
-
-    print(args.batch_size, args.loss_ratio, args.fine_tune_mode)
+    sst_train_data = SentenceClassificationDataset(sst_train_data + sst_dev_data, args)
 
     sst_train_dataloader = DataLoader(
         sst_train_data,
@@ -228,15 +226,8 @@ def train_multitask(args):
         batch_size=args.batch_size[0],
         collate_fn=sst_train_data.collate_fn,
     )
-    sst_dev_dataloader = DataLoader(
-        sst_dev_data,
-        shuffle=False,
-        batch_size=args.batch_size[0],
-        collate_fn=sst_dev_data.collate_fn,
-    )
 
-    para_train_data = SentencePairDataset(para_train_data, args)
-    para_dev_data = SentencePairDataset(para_dev_data, args)
+    para_train_data = SentencePairDataset(para_train_data + para_dev_data, args)
 
     para_train_dataloader = DataLoader(
         para_train_data,
@@ -244,27 +235,14 @@ def train_multitask(args):
         batch_size=args.batch_size[1],
         collate_fn=para_train_data.collate_fn,
     )
-    para_dev_dataloader = DataLoader(
-        para_dev_data,
-        shuffle=False,
-        batch_size=args.batch_size[1],
-        collate_fn=para_dev_data.collate_fn,
-    )
 
-    sts_train_data = SentencePairDataset(sts_train_data, args, isRegression=True)
-    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+    sts_train_data = SentencePairDataset(sts_train_data + sts_dev_data, args, isRegression=True)
 
     sts_train_dataloader = DataLoader(
         sts_train_data,
         shuffle=True,
         batch_size=args.batch_size[2],
         collate_fn=sts_train_data.collate_fn,
-    )
-    sts_dev_dataloader = DataLoader(
-        sts_dev_data,
-        shuffle=False,
-        batch_size=args.batch_size[2],
-        collate_fn=sts_dev_data.collate_fn,
     )
 
     loss_ratio = np.array(args.loss_ratio)
@@ -351,9 +329,8 @@ def train_multitask(args):
                     sst_logits = model.predict_sentiment(sst_ids, sst_mask)
                     sst_loss = (
                         F.cross_entropy(
-                            sst_logits, sst_labels.view(-1), reduction="sum"
+                            sst_logits, sst_labels.view(-1), reduction="mean"
                         )
-                        / args.batch_size[0]
                     )
                 elif args.reg == "smart":
                     sst_logits, sst_loss = model.predict_sentiment_smart(
@@ -385,8 +362,7 @@ def train_multitask(args):
                     para_ids1, para_mask1, para_ids2, para_mask2
                 )
                 para_loss = (
-                    F.cross_entropy(para_logits, para_labels.view(-1), reduction="sum")
-                    / args.batch_size[1]
+                    F.cross_entropy(para_logits, para_labels.view(-1), reduction="mean")
                 )
             else:
                 para_loss = 0
@@ -417,8 +393,7 @@ def train_multitask(args):
                     sts_ids1, sts_mask1, sts_ids2, sts_mask2
                 )
                 sts_loss = (
-                    F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="sum")
-                    / args.batch_size[2]
+                    F.mse_loss(sts_score.view(-1), sts_labels.view(-1), reduction="mean")
                 )
             else:
                 sts_loss = 0
@@ -511,68 +486,26 @@ def train_multitask(args):
                 avg_loss = (sst_loss + para_loss + sts_loss) / 3
                 train_loss = avg_loss.item()
 
-        #### Evaluate sts
-        # sts_dev_cor, sts_y_hat, sts_y_id = model_val_sts(sts_dev_dataloader, model, device)
-        # if sts_dev_cor > best_dev_acc:
-        #     save_model(model, optimizer, args, config, args.filepath)
-        # with open(f"{args.prediction_out}sts_eval.csv","a") as f:
-        #     f.write(f"{sts_dev_cor}\n")
-        # with open(args.sts_dev_out, "w+") as f:
-        #     print(f"dev sts corr :: {sts_dev_cor :.3f}")
-        #     f.write(f"id \t Predicted_Similiary \n")
-        #     for p, s in zip(sts_y_id, sts_y_hat):
-        #         f.write(f"{p} , {s} \n")
-
-        ##### Evaluate sst
-        # sst_train_acc, sst_train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        # sst_dev_acc, sst_dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
-
-        ##### Evaluate para
-        # para_dev_acc, *_ = model_val_para(sts_dev_dataloader, model, device)
-        # if para_dev_acc > best_dev_acc:
-        #     save_model(model, optimizer, args, config, args.filepath)
-        # with open("training_record_para_sts.csv", "a") as f:
-        #     f.write(f"{para_dev_acc},{sts_dev_cor}\n")
-
         #### Evaluate multitask
-        # sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
-        #     model_eval_multitask(
-        #         sst_train_dataloader,
-        #         para_train_dataloader,
-        #         sts_train_dataloader,
-        #         model,
-        #         device,
-        #     )
-        # )
-        if args.log_pcgrad:
-            # nconfs_total[epoch,] = nconfs_epoch / nconfs_epoch.sum()
-            print(f"number of conflicts in this epoch:: {nconfs_total[epoch,]}")
-
-        sst_train_acc, para_train_acc, sts_train_corr = 0, 0, 0
-        sst_dev_acc, _, _, para_dev_acc, _, _, sts_dev_corr, *_ = model_eval_multitask(
-            sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device
-        )
-        with open(f"{args.prediction_out}training_record_dev_acc.csv", "a") as f:
-            f.write(f"{sst_dev_acc},{para_dev_acc},{sts_dev_corr}\n")
-        with open(f"{args.prediction_out}nconfs.csv", "a") as f:
-            f.write(
-                f"{nconfs_total[epoch,0],nconfs_total[epoch,1],nconfs_total[epoch,2]}\n"  # print number of conflicts into file
+        save_model(model, optimizer, args, config, args.filepath+str(epoch))
+        sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+            model_eval_multitask(
+                sst_train_dataloader,
+                para_train_dataloader,
+                sts_train_dataloader,
+                model,
+                device,
             )
-        perfs = np.array([sst_dev_acc, para_dev_acc, sts_dev_corr])
-
-        if np.mean(perfs[np.nonzero(loss_ratio > 0)]) > best_dev_acc:
-            best_dev_acc = np.mean(perfs[np.nonzero(loss_ratio > 0)])
-            save_model(model, optimizer, args, config, args.filepath)
-
+        )
         print(
             f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
               sst train acc :: {sst_train_acc :.3f}, \
-              sst dev acc :: {sst_dev_acc :.3f}\
               para train acc :: {para_train_acc:.3f}, \
-              para dev acc :: {para_dev_acc:.3f}, \
-              sts train corr :: {sts_train_corr :.3f},\
-              sts dev corr :: {sts_dev_corr:.3f}"
+              sts train corr :: {sts_train_corr :.3f},"\
         )
+        with open(f"{args.prediction_out}train_acc.csv","a") as f:
+            f.write(f"{sst_train_acc :.3f},{para_train_acc:.3f},{sts_train_corr :.3f}\n")
+
 
 def ttrain_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""

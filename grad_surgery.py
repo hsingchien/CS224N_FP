@@ -64,6 +64,7 @@ def grad_surgery(grads):
             # print(grad_idx+grad_jdx-1, nconf)
             nconfs[grad_idx+grad_jdx-1] = np.max((nconf,nconfs[grad_idx+grad_jdx-1]))
             m = csim[cflct_idx]/(torch.linalg.vector_norm(gradj[cflct_idx,],ord=2,dim=1,keepdim=False)**2)
+            m = torch.nan_to_num(m, nan=0.0, posinf=1.0, neginf=-1.0)
             gradi[cflct_idx,] = gradi[cflct_idx,] - gradj[cflct_idx,] * m.unsqueeze(-1)
             if one_d: 
                 gradi = gradi.squeeze(0)
