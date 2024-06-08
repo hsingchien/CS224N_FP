@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import torch
 from torch import nn
 import torch.nn.functional as F
+import torch.utils
 from torch.utils.data import DataLoader
 
 from bert import BertModel
@@ -46,6 +47,7 @@ from evaluation import (
 )
 
 from grad_surgery import hmpcgrad
+from sklearn.model_selection import KFold
 
 TQDM_DISABLE = False
 
@@ -219,42 +221,44 @@ def train_multitask(args):
     )
 
     sst_train_data = SentenceClassificationDataset(sst_train_data + sst_dev_data, args)
-
-    sst_train_dataloader = DataLoader(
-        sst_train_data,
-        shuffle=True,
-        batch_size=args.batch_size[0],
-        collate_fn=sst_train_data.collate_fn,
-    )
-
     para_train_data = SentencePairDataset(para_train_data + para_dev_data, args)
-
-    para_train_dataloader = DataLoader(
-        para_train_data,
-        shuffle=True,
-        batch_size=args.batch_size[1],
-        collate_fn=para_train_data.collate_fn,
-    )
-
     sts_train_data = SentencePairDataset(sts_train_data + sts_dev_data, args, isRegression=True)
 
-    sts_train_dataloader = DataLoader(
-        sts_train_data,
-        shuffle=True,
-        batch_size=args.batch_size[2],
-        collate_fn=sts_train_data.collate_fn,
-    )
+    # sst_train_dataloader = DataLoader(
+    #     sst_train_data,
+    #     shuffle=True,
+    #     batch_size=args.batch_size[0],
+    #     collate_fn=sst_train_data.collate_fn,
+    # )
+
+    
+
+    # para_train_dataloader = DataLoader(
+    #     para_train_data,
+    #     shuffle=True,
+    #     batch_size=args.batch_size[1],
+    #     collate_fn=para_train_data.collate_fn,
+    # )
+
+    
+
+    # sts_train_dataloader = DataLoader(
+    #     sts_train_data,
+    #     shuffle=True,
+    #     batch_size=args.batch_size[2],
+    #     collate_fn=sts_train_data.collate_fn,
+    # )
 
     loss_ratio = np.array(args.loss_ratio)
     data_lengths = np.array(
         [
-            len(sst_train_dataloader),
-            len(para_train_dataloader),
-            len(sts_train_dataloader),
+            len(sst_train_data),
+            len(para_train_data),
+            len(sts_train_data),
         ]
-    )
-    max_data_length = np.max(data_lengths[np.nonzero(loss_ratio > 0)])
-    min_data_length = np.min(data_lengths[np.nonzero(loss_ratio > 0)])
+    )/np.array(args.batch_size) * (args.epochs-1)/args.epochs
+    max_data_length = int(np.max(data_lengths[np.nonzero(loss_ratio > 0)]))
+    min_data_length = int(np.min(data_lengths[np.nonzero(loss_ratio > 0)]))
     avg_data_length = int(np.mean(data_lengths[np.nonzero(loss_ratio > 0)]))
     print(data_lengths, avg_data_length)
 
@@ -292,16 +296,34 @@ def train_multitask(args):
         optimizer = AdamW(model.parameters(), lr=lr)
 
     best_dev_acc = 0
+    kfold = KFold(n_splits=args.epochs, shuffle=True)
 
     # tracking loss for round robin
     loss_choice = None
     nconfs_total = np.zeros((args.epochs, N_TASKS))
     # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
+    for epoch, ((sst_train_id, sst_test_id), (para_train_id, para_test_id), (sts_train_id, sts_test_id)) in enumerate(zip(kfold.split(sst_train_data), kfold.split(para_train_data),kfold.split(sts_train_data))):    
+
         model.train()
         train_loss = 0
         num_batches = 0
         nconfs_epoch = np.zeros(N_TASKS)
+
+        sst_train_sampler = torch.utils.data.SubsetRandomSampler(sst_train_id)
+        sst_test_sampler = torch.utils.data.SubsetRandomSampler(sst_test_id)
+        para_train_sampler = torch.utils.data.SubsetRandomSampler(para_train_id)
+        para_test_sampler = torch.utils.data.SubsetRandomSampler(para_test_id)
+        sts_train_sampler = torch.utils.data.SubsetRandomSampler(sts_train_id)
+        sts_test_sampler = torch.utils.data.SubsetRandomSampler(sts_test_id)
+
+        sst_train_dataloader = DataLoader(sst_train_data,batch_size=args.batch_size[0],collate_fn=sst_train_data.collate_fn,sampler=sst_train_sampler)
+        sst_test_dataloader = DataLoader(sst_train_data,batch_size=args.batch_size[0],collate_fn=sst_train_data.collate_fn,sampler=sst_test_sampler)
+        para_train_dataloader = DataLoader(para_train_data,batch_size=args.batch_size[1],collate_fn=para_train_data.collate_fn,sampler=para_train_sampler)
+        para_test_dataloader = DataLoader(para_train_data,batch_size=args.batch_size[1],collate_fn=para_train_data.collate_fn,sampler=para_test_sampler)
+        sts_train_dataloader = DataLoader(sts_train_data,batch_size=args.batch_size[2],collate_fn=sts_train_data.collate_fn,sampler=sts_train_sampler)
+        sts_test_dataloader = DataLoader(sts_train_data,batch_size=args.batch_size[2],collate_fn=sts_train_data.collate_fn,sampler=sts_test_sampler)
+
+
         sst_iterator = iter(sst_train_dataloader)
         sts_iterator = iter(sts_train_dataloader)
         para_iterator = iter(para_train_dataloader)
@@ -487,24 +509,27 @@ def train_multitask(args):
                 train_loss = avg_loss.item()
 
         #### Evaluate multitask
-        save_model(model, optimizer, args, config, args.filepath+str(epoch))
-        sst_train_acc, _, _, para_train_acc, _, _, sts_train_corr, *_ = (
+        
+        sst_test_acc, _, _, para_test_acc, _, _, sts_test_corr, *_ = (
             model_eval_multitask(
-                sst_train_dataloader,
-                para_train_dataloader,
-                sts_train_dataloader,
+                sst_test_dataloader,
+                para_test_dataloader,
+                sts_test_dataloader,
                 model,
                 device,
             )
         )
+        if np.mean((sst_test_acc, para_test_acc, sts_test_corr)) >= best_dev_acc:
+            save_model(model, optimizer, args, config, args.filepath)
+
         print(
             f"Epoch {epoch}: train loss :: {train_loss :.3f}, sst loss :: {sst_loss :.3f}, para loss :: {para_loss :.3f}, sts loss :: {sts_loss :.3f},\
-              sst train acc :: {sst_train_acc :.3f}, \
-              para train acc :: {para_train_acc:.3f}, \
-              sts train corr :: {sts_train_corr :.3f},"\
+              sst train acc :: {sst_test_acc :.3f}, \
+              para train acc :: {para_test_acc:.3f}, \
+              sts train corr :: {sts_test_corr :.3f},"\
         )
-        with open(f"{args.prediction_out}train_acc.csv","a") as f:
-            f.write(f"{sst_train_acc :.3f},{para_train_acc:.3f},{sts_train_corr :.3f}\n")
+        with open(f"{args.prediction_out}val_acc.csv","a") as f:
+            f.write(f"{sst_test_acc :.3f},{para_test_acc:.3f},{sts_test_corr :.3f}\n")
 
 
 def ttrain_multitask(args):
