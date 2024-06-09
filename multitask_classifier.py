@@ -410,7 +410,7 @@ def train_multitask(args):
                 sts_mask1 = sts_mask1.to(device)
                 sts_ids2 = sts_ids2.to(device)
                 sts_mask2 = sts_mask2.to(device)
-                sts_labels = sts_labels.float()/5  # 0-5
+                sts_labels = sts_labels.float() / 5  # 0-5
                 sts_labels = sts_labels.to(device)
 
                 sts_score = model.predict_similarity(
@@ -574,6 +574,7 @@ def train_multitask(args):
               sts dev corr :: {sts_dev_corr:.3f}"
         )
 
+
 def ttrain_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
     with torch.no_grad():
@@ -588,8 +589,10 @@ def ttrain_multitask(args):
         model = model.to(device)
         print(f"Loaded model to test from {args.model_path}")
 
-        sst_train_data, num_labels, para_train_data, sts_train_data = load_multitask_data(
-            args.sst_train, args.para_train, args.sts_train, split="train"
+        sst_train_data, num_labels, para_train_data, sts_train_data = (
+            load_multitask_data(
+                args.sst_train, args.para_train, args.sts_train, split="train"
+            )
         )
         sst_train_data = SentenceClassificationDataset(sst_train_data, args)
 
@@ -628,7 +631,11 @@ def ttrain_multitask(args):
             train_sts_y_pred,
             train_sts_sent_ids,
         ) = model_eval_multitask(
-            sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device
+            sst_train_dataloader,
+            para_train_dataloader,
+            sts_train_dataloader,
+            model,
+            device,
         )
 
         with open(f"{args.prediction_out}sst-train.csv", "w+") as f:
@@ -658,16 +665,22 @@ def ttrain_multitask(args):
 def test_multitask(args):
     """Test and save predictions on the dev and test sets of all three tasks."""
     with torch.no_grad():
-        device = (
-            torch.device(f"cuda:{args.gpuid}") if args.use_gpu else torch.device("cpu")
-        )
-        saved = torch.load(args.filepath)
+        if args.use_gpu:
+            device = torch.device(f"cuda:{args.gpuid}")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+        if args.model_path:
+            saved = torch.load(args.model_path, map_location=device)
+        else:
+            saved = torch.load(args.filepath, map_location=device)
         config = saved["model_config"]
 
         model = MultitaskBERT(config)
         model.load_state_dict(saved["model"])
         model = model.to(device)
-        print(f"Loaded model to test from {args.filepath}")
+        print(f"Loaded model to test from {args.model_path}")
 
         sst_test_data, num_labels, para_test_data, sts_test_data = load_multitask_data(
             args.sst_test, args.para_test, args.sts_test, split="test"
@@ -847,9 +860,9 @@ def get_args():
     )
     parser.add_argument("--model_path", default="")
     parser.add_argument("--log_pcgrad", action="store_true")
-    parser.add_argument("--task_mode", type=str,
-        choices=("test", "train"),
-        default="train")
+    parser.add_argument(
+        "--task_mode", type=str, choices=("test", "train"), default="train"
+    )
     args = parser.parse_args()
     return args
 
@@ -873,5 +886,5 @@ if __name__ == "__main__":
         train_multitask(args)
         test_multitask(args)
     elif args.task_mode == "test":
-        ttrain_multitask(args)
+        # ttrain_multitask(args)
         test_multitask(args)
