@@ -1,3 +1,0 @@
-dev sentiment acc :: 0.520
-dev paraphrase acc :: 0.789
-dev sts corr :: 0.834

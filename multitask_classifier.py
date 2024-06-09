@@ -89,7 +89,7 @@ class MultitaskBERT(nn.Module):
         ### TODO
         self.sentiment_af = nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
         self.predict_paraphrase_af = nn.Linear(2 * BERT_HIDDEN_SIZE, 2)
-        # self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, BERT_HIDDEN_SIZE*2)
+        self.predict_similarity_af = nn.Linear(BERT_HIDDEN_SIZE * 2, 1)
         self.dropout_layer = nn.Dropout(config.hidden_dropout_prob)
         self.cos = torch.nn.CosineSimilarity(dim=1)
 
