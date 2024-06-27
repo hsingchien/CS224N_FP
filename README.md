@@ -1,27 +1,2 @@
-# CS 224N Default Final Project - Multitask BERT
-
-This is the default final project for the Stanford CS 224N class. Please refer to the project handout on the course website for detailed instructions and an overview of the codebase.
-
-This project comprises two parts. In the first part, you will implement some important components of the BERT model to better understand its architecture. 
-In the second part, you will use the embeddings produced by your BERT model on three downstream tasks: sentiment classification, paraphrase detection, and semantic similarity. You will implement extensions to improve your model's performance on the three downstream tasks.
-
-In broad strokes, Part 1 of this project targets:
-* bert.py: Missing code blocks.
-* classifier.py: Missing code blocks.
-* optimizer.py: Missing code blocks.
-
-And Part 2 targets:
-* multitask_classifier.py: Missing code blocks.
-* datasets.py: Possibly useful functions/classes for extensions.
-* evaluation.py: Possibly useful functions/classes for extensions.
-
-## Setup instructions
-
-Follow `setup.sh` to properly setup a conda environment and install dependencies.
-
-## Acknowledgement
-
-The BERT implementation part of the project was adapted from the "minbert" assignment developed at Carnegie Mellon University's [CS11-711 Advanced NLP](http://phontron.com/class/anlp2021/index.html),
-created by Shuyan Zhou, Zhengbao Jiang, Ritam Dutt, Brendon Boldt, Aditya Veerubhotla, and Graham Neubig.
-
-Parts of the code are from the [`transformers`](https://github.com/huggingface/transformers) library ([Apache License 2.0](./LICENSE)).
+# Efficient multi-task learning strategies for single BERT
+This is the [default final project](https://github.com/amahankali10/CS224N-Spring2024-DFP-Student-Handout) of Stanford CS224n (2024). In this project we fine-tuned the 110M parameter base BERT model ([`bert-base-uncased`](https://huggingface.co/google-bert/bert-base-uncased)) for 3 downstream tasks: sentiment analysis (SST), paraphrase detection (Para) and semantic textual similarity score (STS). We benchmarked a variety of multi-task fine-tuning techniques, including siamese network design, [`PCGrad`](https://arxiv.org/abs/2001.06782) and [`FAMO`](https://arxiv.org/abs/2306.03792). We also implemented our own variant of `PCGrad`. We also followed [`SBERT`](https://arxiv.org/abs/1908.10084) and found cosine similarity loss on average sentence embedding dramatically improved the performance of STS. We extensively experimented the cosine similarity loss under different settings and analyzed its effects on the token embedding of the base BERT model, which eventually helped us explain the mechanisms behind the STS performance improvement. Lastly, our analysis also highlighted the 'black box' nature of this 100M parameter language model. Unlike the classic [GloVe](https://nlp.stanford.edu/projects/glove/) or [Word2Vec](https://arxiv.org/abs/1301.3781), the token embeddings from this pretrained BERT model are largely uninterpretable, which poses important ethic questions regarding to safeguard the behaviors of these models. The final report pdf will be coming soon! This project was done by Jiamin Sun and Xingjian Zhang.
